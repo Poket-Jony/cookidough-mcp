@@ -1,0 +1,132 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cookidoo-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server for the Thermomix Cookidoo platform"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Jonas Plamann" }]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "cookidoo",
+    "thermomix",
+    "tm7",
+    "recipe",
+    "meal-planning",
+    "llm",
+    "claude",
+    "anthropic",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP",
+    "Typing :: Typed",
+]
+dependencies = [
+    "mcp[cli]>=1.2",
+    # ``cookidoo-api`` 0.17.1 ships the browser OAuth2 cookie flow that the
+    # Cookidoo web app uses. Earlier releases still relied on the
+    # ``grant_type=password`` flow that Vorwerk retired in May 2026.
+    "cookidoo-api>=0.17.1",
+    "aiohttp>=3.9",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "recipe-scrapers>=15.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+cookidoo-mcp = "cookidoo_mcp.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/jonasplamann/cookidoo-mcp"
+Issues = "https://github.com/jonasplamann/cookidoo-mcp/issues"
+Documentation = "https://github.com/jonasplamann/cookidoo-mcp#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cookidoo_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",  # pycodestyle, pyflakes
+    "I",            # isort
+    "B",            # flake8-bugbear
+    "UP",           # pyupgrade
+    "SIM",          # flake8-simplify
+    "RUF",          # ruff-specific
+    "N",            # pep8-naming
+    "ANN",          # flake8-annotations
+    "PT",           # flake8-pytest-style
+    "C4",           # flake8-comprehensions
+    "PIE",          # flake8-pie
+    "RET",          # flake8-return
+    "PTH",          # flake8-use-pathlib
+    "ASYNC",        # async-correctness
+    "DTZ",          # tz-naive datetime usage
+    "LOG",          # logging best practices
+    "G",            # logging string formatting
+    "T20",          # forbid print()
+    "TID",          # tidy imports (no relative drift)
+]
+ignore = [
+    "ANN401",   # `Any` type allowed where used
+    "TID252",   # relative imports from parent are idiomatic for our `tools/` package
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PT022"]  # fixtures with `yield` but no teardown are intentional
+"tests/smoke/*" = [
+    "T201",   # smoke test is a CLI script, intentional stdout
+    "DTZ011", # `date.today()` is intentional (local-day calendar lookup)
+]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["cookidoo_api.*", "recipe_scrapers.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# FastMCP's @mcp.tool() decorator is untyped; we accept that locally rather
+# than across the whole codebase.
+module = ["cookidoo_mcp.tools.*"]
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers --cov=cookidoo_mcp --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]

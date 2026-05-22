@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Type & lint caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Environment — any .env* file is excluded; only .env.example is tracked.
+# Real credentials must never sit inside the repo tree.
+.env*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
