@@ -95,7 +95,7 @@ def register(mcp: FastMCP) -> None:
 
     @mcp.tool()
     async def validate_recipe_quality(ctx: ToolContext, draft: CustomRecipeDraft) -> QualityReport:
-        """Score a draft against the TM7 guided-cooking quality bar without uploading."""
+        """Score a draft against the Thermomix recipe quality bar without uploading."""
         return get_context(ctx).scorer.score(draft)
 
     @mcp.tool()
@@ -138,6 +138,18 @@ def register(mcp: FastMCP) -> None:
         return f"Deleted custom recipe {recipe_id}."
 
     @mcp.tool()
+    async def clone_recipe_as_custom(
+        ctx: ToolContext, recipe_id: str, serving_size: int = 4
+    ) -> CustomRecipeDetails:
+        """Copy a Cookidoo recipe into the user's custom recipes.
+
+        Equivalent to "Save as own recipe" in the Cookidoo apps: takes the
+        ID of any Cookidoo recipe (`get_recipe_details` returns this ID) and
+        creates a personal, editable copy at the chosen serving size.
+        """
+        return await get_context(ctx).session.clone_recipe_as_custom(recipe_id, serving_size)
+
+    @mcp.tool()
     async def import_web_recipe(
         ctx: ToolContext,
         url: str,
@@ -148,7 +160,7 @@ def register(mcp: FastMCP) -> None:
 
         The scraped ``draft`` and ``quality`` report are **always** returned,
         even when the quality bar blocks the upload. That lets the caller —
-        typically an LLM — read the recipe, rewrite the step text into TM7
+        typically an LLM — read the recipe, rewrite the step text into Thermomix
         guided-cooking annotations (e.g. "5 min / 100 °C / speed 3"), and
         resubmit via ``upload_custom_recipe``.
 
@@ -173,7 +185,7 @@ async def _score_and_maybe_upload(
             blocked_reason=(
                 f"Quality score {report.score} is below the threshold "
                 f"{report.threshold}. The scraped draft is returned for "
-                f"editing — rewrite the steps with TM7 guided-cooking "
+                f"editing — rewrite the steps with Thermomix guided-cooking "
                 f"annotations and resubmit via upload_custom_recipe, or "
                 f"call import_web_recipe again with force=true to upload "
                 f"the draft as-is."

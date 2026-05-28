@@ -33,3 +33,17 @@ HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
 # enough for login (~2 s) + POST/PATCH (~1 s) with comfortable headroom but
 # bails out fast when something is actually wrong.
 CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS: Final[float] = 60.0
+
+# Maximum number of concurrent recipe-detail fetches issued by
+# ``suggest_recipes_from_ingredients``. Larger collections would otherwise
+# serialize N HTTP round-trips through ``get_recipe_details`` and easily blow
+# past the MCP client's tool-call timeout. 5 keeps per-call latency low without
+# hammering the Cookidoo API.
+SUGGEST_RECIPE_FETCH_CONCURRENCY: Final[int] = 5
+
+# Minimum length of an ``available_ingredients`` token in the suggestion tool.
+# The matcher uses a bidirectional ``substring`` containment which trivially
+# matches very short tokens against unrelated ingredient names (``"oil"`` →
+# ``"soil"``, ``"egg"`` → ``"eggplant"``). Three chars is a pragmatic floor
+# that still lets common short head nouns like ``"rice"`` / ``"salt"`` through.
+SUGGEST_MIN_INGREDIENT_LENGTH: Final[int] = 3

@@ -10,8 +10,13 @@ from unittest.mock import AsyncMock
 import pytest
 from cookidoo_api.exceptions import CookidooRequestException
 
-from cookidoo_mcp.errors import NotFoundError
-from cookidoo_mcp.models import CustomRecipeDraft, RecipeStep
+from cookidoo_mcp.errors import NotFoundError, UpstreamApiError
+from cookidoo_mcp.models import (
+    AdditionalItemRename,
+    CustomRecipeDraft,
+    RecipeStep,
+    ShoppingItemOwnershipUpdate,
+)
 from cookidoo_mcp.session import CookidooSession
 
 
@@ -28,6 +33,19 @@ def _make_collection() -> Any:
         description=None,
         chapters=[_NS(name="x", recipes=[_NS()])],
     )
+
+
+def _mock_collections(fake: Any, *, managed: list[Any], custom: list[Any]) -> None:
+    """Stub the collection-listing endpoints for the suggestion tests.
+
+    ``_collect_recipe_ids`` now drains every page via ``count_*_collections``;
+    the listing endpoints are still called per page. ``(0, 1)`` means
+    'one page exists' so a single ``get_*_collections(page=0)`` is issued.
+    """
+    fake.count_managed_collections = AsyncMock(return_value=(len(managed), 1 if managed else 0))
+    fake.count_custom_collections = AsyncMock(return_value=(len(custom), 1 if custom else 0))
+    fake.get_managed_collections = AsyncMock(return_value=managed)
+    fake.get_custom_collections = AsyncMock(return_value=custom)
 
 
 def _make_calendar_day() -> Any:
@@ -341,3 +359,502 @@ async def test_upload_custom_recipe_rollback_is_itself_bounded_on_hang(
     # hold the call hostage past the per-step budget.
     with pytest.raises(RuntimeError, match="patch boom"):
         await session.upload_custom_recipe(draft)
+
+
+async def test_add_custom_recipes_to_calendar(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.add_custom_recipes_to_calendar = AsyncMock(return_value=_make_calendar_day())
+    result = await session.add_custom_recipes_to_calendar(date(2026, 5, 21), ["cr1"])
+    assert result.id == "2026-05-21"
+    fake.add_custom_recipes_to_calendar.assert_awaited_once_with(date(2026, 5, 21), ["cr1"])
+
+
+async def test_remove_custom_recipe_from_calendar(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.remove_custom_recipe_from_calendar = AsyncMock(return_value=_make_calendar_day())
+    result = await session.remove_custom_recipe_from_calendar(date(2026, 5, 21), "cr1")
+    assert result.id == "2026-05-21"
+
+
+async def test_add_custom_recipes_to_shopping_list_counts_items(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.add_ingredient_items_for_custom_recipes = AsyncMock(return_value=[1, 2, 3, 4])
+    assert await session.add_custom_recipes_to_shopping_list(["cr1"]) == 4
+
+
+async def test_remove_custom_recipes_from_shopping_list_delegates(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.remove_ingredient_items_for_custom_recipes = AsyncMock(return_value=None)
+    await session.remove_custom_recipes_from_shopping_list(["cr1", "cr2"])
+    fake.remove_ingredient_items_for_custom_recipes.assert_awaited_once_with(["cr1", "cr2"])
+
+
+async def test_set_ingredient_items_ownership_maps_response(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.edit_ingredient_items_ownership = AsyncMock(
+        return_value=[_NS(id="i1", name="Tomato", description="d", is_owned=True)]
+    )
+    items = await session.set_ingredient_items_ownership(
+        [ShoppingItemOwnershipUpdate(id="i1", is_owned=True)]
+    )
+    assert items[0].is_owned is True
+    assert items[0].source == "recipe"
+
+
+async def test_set_additional_items_ownership_maps_response(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.edit_additional_items_ownership = AsyncMock(
+        return_value=[_NS(id="a1", name="Sea salt", is_owned=False)]
+    )
+    items = await session.set_additional_items_ownership(
+        [ShoppingItemOwnershipUpdate(id="a1", is_owned=False)]
+    )
+    assert items[0].source == "additional"
+
+
+async def test_rename_additional_items_maps_response(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.edit_additional_items = AsyncMock(
+        return_value=[_NS(id="a1", name="Sea salt", is_owned=False)]
+    )
+    items = await session.rename_additional_items([AdditionalItemRename(id="a1", name="Sea salt")])
+    assert items[0].name == "Sea salt"
+
+
+async def test_clone_recipe_as_custom_maps_response(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.add_custom_recipe_from = AsyncMock(
+        return_value=_NS(
+            id="new",
+            name="Cloned",
+            url="https://cookidoo.de/recipes/custom-recipes/new",
+            serving_size=4,
+            active_time=600,
+            total_time=1800,
+            tools=["TM7"],
+            ingredients=["i"],
+            instructions=["s"],
+            thumbnail=None,
+            image=None,
+        )
+    )
+    result = await session.clone_recipe_as_custom("r1", 4)
+    assert result.id == "new"
+    fake.add_custom_recipe_from.assert_awaited_once_with("r1", 4)
+
+
+async def test_clone_recipe_as_custom_propagates_upstream_errors(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    """A Cookidoo write failure (validation, non-cloneable recipe, transient
+    5xx) must surface as ``UpstreamApiError`` with the original upstream
+    message — not be remapped to ``NotFoundError``. Mapping it to 404 would
+    tell the LLM the source recipe does not exist, even when it does."""
+    session, fake = patched_session
+    fake.add_custom_recipe_from = AsyncMock(
+        side_effect=CookidooRequestException("Add custom recipe failed due to request exception.")
+    )
+    with pytest.raises(UpstreamApiError, match="request exception"):
+        await session.clone_recipe_as_custom("missing", 4)
+
+
+async def test_suggest_recipes_from_ingredients_collects_and_scores(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    chapter = _NS(name="ch", recipes=[_NS(id="r1"), _NS(id="r2")])
+    collection = _NS(id="c1", chapters=[chapter])
+    _mock_collections(fake, managed=[], custom=[collection])
+
+    async def _details(rid: str) -> Any:
+        from cookidoo_mcp.models import Ingredient, RecipeDetails
+
+        if rid == "r1":
+            return RecipeDetails(
+                id="r1",
+                name="Rice bowl",
+                url="https://cookidoo.de/recipes/r1",
+                ingredients=[Ingredient(id="i1", name="Rice"), Ingredient(id="i2", name="Tomato")],
+            )
+        return RecipeDetails(
+            id="r2",
+            name="Cabbage soup",
+            url="https://cookidoo.de/recipes/r2",
+            ingredients=[Ingredient(id="i3", name="Cabbage")],
+        )
+
+    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+
+    suggestions = await session.suggest_recipes_from_ingredients(["rice"])
+    assert len(suggestions) == 1
+    assert suggestions[0].recipe.id == "r1"
+    assert suggestions[0].matching_ingredients == ["rice"]
+    assert suggestions[0].missing_ingredients == ["tomato"]
+
+
+async def test_suggest_recipes_returns_empty_when_no_ingredients(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, _ = patched_session
+    assert await session.suggest_recipes_from_ingredients([]) == []
+
+
+async def test_suggest_recipes_filters_by_collection_ids(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    collection_a = _NS(id="a", chapters=[_NS(name="x", recipes=[_NS(id="r-a")])])
+    collection_b = _NS(id="b", chapters=[_NS(name="x", recipes=[_NS(id="r-b")])])
+    _mock_collections(fake, managed=[collection_a], custom=[collection_b])
+
+    seen: list[str] = []
+
+    async def _details(rid: str) -> Any:
+        from cookidoo_mcp.models import Ingredient, RecipeDetails
+
+        seen.append(rid)
+        return RecipeDetails(
+            id=rid,
+            name=rid,
+            url=f"https://cookidoo.de/recipes/{rid}",
+            ingredients=[Ingredient(id="i", name="Rice")],
+        )
+
+    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+    await session.suggest_recipes_from_ingredients(["rice"], collection_ids=["b"])
+    assert seen == ["r-b"]
+
+
+async def test_search_recipes_calls_upstream_and_parses(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    """``search_recipes`` builds the right URL and parses the upstream payload."""
+    from contextlib import asynccontextmanager
+
+    session = CookidooSession(settings)
+    fake_client = _NS(
+        localization=_NS(
+            url="https://cookidoo.de",
+            language="de-DE",
+            country_code="de",
+        )
+    )
+
+    async def _login() -> Any:
+        return fake_client
+
+    monkeypatch.setattr(session, "_ensure_logged_in", _login)
+
+    captured: dict[str, Any] = {}
+
+    @asynccontextmanager
+    async def _fake_authed_http(method: str, url: str, json_body: Any = None) -> Any:
+        captured["method"] = method
+        captured["url"] = url
+        yield _NS()
+
+    monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
+
+    async def _fake_parse_json(_response: Any) -> Any:
+        return {
+            "data": [
+                {
+                    "id": "rid1",
+                    "title": "Tomatensuppe",
+                    "rating": 4.7,
+                    "numberOfRatings": 42,
+                    "totalTime": "PT30M",
+                    "image": "https://x/{transformation}/img.jpg",
+                },
+                {"id": "rid2", "title": "Bad rating", "rating": None},
+                "not-a-dict",
+            ]
+        }
+
+    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+
+    results = await session.search_recipes("tomate", limit=5)
+
+    assert "search/de-DE" in captured["url"]
+    assert "query=tomate" in captured["url"]
+    assert "countries=de" in captured["url"]
+    assert "limit=5" in captured["url"]
+    assert results[0].id == "rid1"
+    assert results[0].rating == 4.7
+    assert results[0].total_time_seconds == 30 * 60
+    assert results[0].image is not None
+    assert "{transformation}" not in results[0].image
+    # rid2 has a title but rating=None — kept, with rating preserved as None.
+    assert len(results) == 2
+    assert results[1].rating is None
+
+
+async def test_search_recipes_drops_rows_without_title(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    from contextlib import asynccontextmanager
+
+    session = CookidooSession(settings)
+    fake_client = _NS(
+        localization=_NS(url="https://cookidoo.de", language="de-DE", country_code="de")
+    )
+
+    async def _login() -> Any:
+        return fake_client
+
+    monkeypatch.setattr(session, "_ensure_logged_in", _login)
+
+    @asynccontextmanager
+    async def _fake_authed_http(method: str, url: str, json_body: Any = None) -> Any:
+        yield _NS()
+
+    monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
+
+    async def _fake_parse_json(_response: Any) -> Any:
+        return {
+            "data": [
+                {"id": "rid1"},  # title missing
+                {"id": "rid2", "title": ""},  # title empty
+                {"id": "rid3", "title": "Good", "numberOfRatings": 42.0},
+            ]
+        }
+
+    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    results = await session.search_recipes("x")
+    assert [r.id for r in results] == ["rid3"]
+    # numberOfRatings sent as a float must still be accepted (some JSON
+    # producers serialise integer counts as 42.0).
+    assert results[0].number_of_ratings == 42
+
+
+async def test_search_recipes_url_encodes_query_plus_sign(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    """Without quote_plus, a literal '+' in the query is forwarded as '+'
+    which Cookidoo's search decodes as a space — a silent UX bug."""
+    from contextlib import asynccontextmanager
+
+    session = CookidooSession(settings)
+    fake_client = _NS(
+        localization=_NS(url="https://cookidoo.de", language="de-DE", country_code="de")
+    )
+
+    async def _login() -> Any:
+        return fake_client
+
+    monkeypatch.setattr(session, "_ensure_logged_in", _login)
+
+    captured: dict[str, Any] = {}
+
+    @asynccontextmanager
+    async def _fake_authed_http(method: str, url: str, json_body: Any = None) -> Any:
+        captured["url"] = url
+        yield _NS()
+
+    monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
+
+    async def _fake_parse_json(_response: Any) -> Any:
+        return {"data": []}
+
+    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    await session.search_recipes("A+B Sauce")
+    # quote_plus encodes '+' as %2B and space as '+'.
+    assert "query=A%2BB+Sauce" in captured["url"]
+
+
+async def test_search_recipes_returns_empty_on_unexpected_payload(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    from contextlib import asynccontextmanager
+
+    session = CookidooSession(settings)
+    fake_client = _NS(
+        localization=_NS(url="https://cookidoo.de", language="de-DE", country_code="de")
+    )
+
+    async def _login() -> Any:
+        return fake_client
+
+    monkeypatch.setattr(session, "_ensure_logged_in", _login)
+
+    @asynccontextmanager
+    async def _fake_authed_http(method: str, url: str, json_body: Any = None) -> Any:
+        yield _NS()
+
+    monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
+
+    async def _fake_parse_json(_response: Any) -> Any:
+        return {"meta": {}}  # missing "data"
+
+    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    assert await session.search_recipes("x") == []
+
+
+async def test_search_recipes_clamps_limit(monkeypatch: pytest.MonkeyPatch, settings: Any) -> None:
+    from contextlib import asynccontextmanager
+
+    session = CookidooSession(settings)
+    fake_client = _NS(
+        localization=_NS(url="https://cookidoo.de", language="de-DE", country_code="de")
+    )
+
+    async def _login() -> Any:
+        return fake_client
+
+    monkeypatch.setattr(session, "_ensure_logged_in", _login)
+
+    captured: dict[str, Any] = {}
+
+    @asynccontextmanager
+    async def _fake_authed_http(method: str, url: str, json_body: Any = None) -> Any:
+        captured["url"] = url
+        yield _NS()
+
+    monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
+
+    async def _fake_parse_json(_response: Any) -> Any:
+        return {"data": []}
+
+    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    await session.search_recipes("x", limit=9999)
+    assert "limit=50" in captured["url"]
+
+    # And the lower bound:
+    captured.clear()
+    await session.search_recipes("x", limit=0)
+    assert "limit=1" in captured["url"]
+
+
+async def test_suggest_recipes_skips_recipes_with_no_match(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    collection = _NS(id="c", chapters=[_NS(name="x", recipes=[_NS(id="r1")])])
+    _mock_collections(fake, managed=[], custom=[collection])
+
+    async def _details(_rid: str) -> Any:
+        from cookidoo_mcp.models import Ingredient, RecipeDetails
+
+        return RecipeDetails(
+            id="r1",
+            name="Nothing in common",
+            url="https://cookidoo.de/recipes/r1",
+            ingredients=[Ingredient(id="i", name="Pufferfish")],
+        )
+
+    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+    assert await session.suggest_recipes_from_ingredients(["rice"]) == []
+
+
+async def test_suggest_recipes_tolerates_individual_recipe_errors(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    session, fake = patched_session
+    collection = _NS(id="c", chapters=[_NS(name="x", recipes=[_NS(id="ok"), _NS(id="boom")])])
+    _mock_collections(fake, managed=[], custom=[collection])
+
+    async def _details(rid: str) -> Any:
+        from cookidoo_mcp.models import Ingredient, RecipeDetails
+
+        if rid == "boom":
+            # NotFoundError is expected for ID-look-up misses (e.g. a custom
+            # recipe id smuggled into a chapter under a managed-collection
+            # endpoint). It gets swallowed; everything else propagates.
+            raise NotFoundError("nope")
+        return RecipeDetails(
+            id=rid,
+            name="Good",
+            url=f"https://cookidoo.de/recipes/{rid}",
+            ingredients=[Ingredient(id="i", name="Rice")],
+        )
+
+    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+    suggestions = await session.suggest_recipes_from_ingredients(["rice"])
+    assert [s.recipe.id for s in suggestions] == ["ok"]
+
+
+async def test_suggest_recipes_propagates_unexpected_upstream_errors(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    """A non-NotFound failure (e.g. session closed mid-flight) must propagate.
+
+    The previous implementation caught both NotFoundError and UpstreamApiError,
+    which silently absorbed the 'Session is closed.' signal that
+    ``_ensure_logged_in`` raises after ``aclose``. Now only NotFoundError
+    is swallowed.
+    """
+    session, fake = patched_session
+    collection = _NS(id="c", chapters=[_NS(name="x", recipes=[_NS(id="boom")])])
+    _mock_collections(fake, managed=[], custom=[collection])
+
+    async def _details(_rid: str) -> Any:
+        raise UpstreamApiError("Session is closed.")
+
+    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+    with pytest.raises(UpstreamApiError, match="closed"):
+        await session.suggest_recipes_from_ingredients(["rice"])
+
+
+async def test_suggest_recipes_drops_short_ingredient_tokens(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    """Single/double-letter tokens are ignored — they were producing spurious
+    matches via the bidirectional substring matcher (e.g. 'oil' → 'soil')."""
+    session, fake = patched_session
+    # No collections are even queried because the available_ingredients set
+    # is empty after short tokens are filtered out.
+    fake.count_managed_collections = AsyncMock()
+    fake.count_custom_collections = AsyncMock()
+    assert await session.suggest_recipes_from_ingredients(["a", "oi"]) == []
+    fake.count_managed_collections.assert_not_called()
+
+
+async def test_suggest_recipes_drains_all_collection_pages(
+    patched_session: tuple[CookidooSession, Any],
+) -> None:
+    """A user with multiple pages of collections must have every page
+    walked, not just page 0."""
+    session, fake = patched_session
+    page0 = _NS(id="c0", chapters=[_NS(name="x", recipes=[_NS(id="r0")])])
+    page1 = _NS(id="c1", chapters=[_NS(name="x", recipes=[_NS(id="r1")])])
+
+    fake.count_managed_collections = AsyncMock(return_value=(2, 2))
+    fake.count_custom_collections = AsyncMock(return_value=(0, 0))
+
+    async def _get_managed(page: int = 0) -> list[Any]:
+        return [page0] if page == 0 else [page1]
+
+    fake.get_managed_collections = _get_managed
+
+    seen: list[str] = []
+
+    async def _details(rid: str) -> Any:
+        from cookidoo_mcp.models import Ingredient, RecipeDetails
+
+        seen.append(rid)
+        return RecipeDetails(
+            id=rid,
+            name=rid,
+            url=f"https://cookidoo.de/recipes/{rid}",
+            ingredients=[Ingredient(id="i", name="Rice")],
+        )
+
+    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+    await session.suggest_recipes_from_ingredients(["rice"])
+    assert sorted(seen) == ["r0", "r1"]

@@ -37,6 +37,16 @@ _EXPECTED_TOOL_NAMES = frozenset(
         "list_custom_recipes",
         "delete_custom_recipe",
         "import_web_recipe",
+        "clone_recipe_as_custom",
+        "add_custom_recipes_to_calendar",
+        "remove_custom_recipe_from_calendar",
+        "add_custom_recipes_to_shopping_list",
+        "remove_custom_recipes_from_shopping_list",
+        "set_ingredient_items_ownership",
+        "set_additional_items_ownership",
+        "rename_additional_items",
+        "search_recipes",
+        "suggest_recipes_from_ingredients",
     }
 )
 

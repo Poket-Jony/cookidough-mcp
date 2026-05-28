@@ -1,4 +1,4 @@
-"""TM7 guided-cooking annotation inference for plain-text recipe steps.
+"""Thermomix guided-cooking annotation inference for plain-text recipe steps.
 
 When a step lacks explicit annotations, an `AnnotationInferrer` scans the
 step text and produces a best-effort list of `StepAnnotation`s. Strategies

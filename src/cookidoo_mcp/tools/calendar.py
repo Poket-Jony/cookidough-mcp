@@ -31,3 +31,22 @@ def register(mcp: FastMCP) -> None:
     ) -> CalendarDay:
         """Remove a single planned recipe from the given date."""
         return await get_context(ctx).session.remove_recipe_from_calendar(day, recipe_id)
+
+    @mcp.tool()
+    async def add_custom_recipes_to_calendar(
+        ctx: ToolContext, day: date, recipe_ids: list[str]
+    ) -> CalendarDay:
+        """Schedule one or more **custom** recipes for the given date.
+
+        Use ``add_recipes_to_calendar`` for regular Cookidoo recipes; this
+        endpoint targets the user's own custom recipes (those listed by
+        ``list_custom_recipes``).
+        """
+        return await get_context(ctx).session.add_custom_recipes_to_calendar(day, recipe_ids)
+
+    @mcp.tool()
+    async def remove_custom_recipe_from_calendar(
+        ctx: ToolContext, day: date, recipe_id: str
+    ) -> CalendarDay:
+        """Remove a single planned **custom** recipe from the given date."""
+        return await get_context(ctx).session.remove_custom_recipe_from_calendar(day, recipe_id)

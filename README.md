@@ -8,7 +8,7 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server for the
 Thermomix [Cookidoo](https://cookidoo.de) platform. Plug it into Claude
 Desktop, Claude Code or any other MCP-aware client and let your LLM search
-recipes, manage shopping lists and meal plans, and upload custom TM7 recipes.
+recipes, manage shopping lists and meal plans, and upload custom Thermomix recipes.
 
 > **Unofficial project.** This is an independent, community-built MCP server.
 > It is **not** developed, sponsored, endorsed, or affiliated with Vorwerk,
@@ -16,17 +16,20 @@ recipes, manage shopping lists and meal plans, and upload custom TM7 recipes.
 > identify the third-party service this software talks to. See
 > [Disclaimer & trademarks](#disclaimer--trademarks) for details.
 
-- 27 MCP tools across 5 domains (auth, recipes, collections, shopping,
-  calendar)
+- 37 MCP tools across 6 domains (auth, recipes, collections, shopping,
+  calendar, discovery)
 - Dual transport: stdio (default) and streamable HTTP
-- TM7 quality gate that blocks low-quality custom recipe uploads
+- Thermomix quality gate that blocks low-quality custom recipe uploads
 - Guided-cooking annotations (TTS time/speed spans, INGREDIENT spans) —
   delivered explicitly by the LLM or inferred server-side from plain text
 - Web recipe import via [`recipe-scrapers`](https://github.com/hhursev/recipe-scrapers)
   (200+ supported sites)
+- Keyword search of the Cookidoo recipe library
+- Ingredient-based recipe suggestions over the user's own collections
 
 ## Table of contents
 
+- [Features](#features)
 - [Requirements](#requirements)
 - [Quickstart](#quickstart)
 - [MCP client setup](#mcp-client-setup)
@@ -41,6 +44,72 @@ recipes, manage shopping lists and meal plans, and upload custom TM7 recipes.
 - [Credits](#credits)
 - [Disclaimer & trademarks](#disclaimer--trademarks)
 - [License](#license)
+
+## Features
+
+A high-level overview of what the server can do, grouped by domain. The
+exact tool names live in the [Tool reference](#tool-reference) further
+below.
+
+### Account & authentication
+
+- Lazy login on first tool call — no separate connect step.
+- Read the user profile and active subscription, including subscription
+  level, type, and expiry.
+
+### Recipe lookup, creation & import
+
+- Fetch full Cookidoo recipe details (`get_recipe_details`).
+- List, read, delete the authenticated user's custom recipes.
+- Clone any Cookidoo recipe into the user's custom recipes at a chosen
+  serving size (`clone_recipe_as_custom`).
+- Build, validate, and upload custom Thermomix recipes from structured input,
+  with guided-cooking annotations (`TTS`, `INGREDIENT`, all seven `MODE`
+  variants).
+- Import a recipe directly from any of 200+ supported recipe sites via
+  `recipe-scrapers`, returning the parsed draft + a quality report and
+  uploading when the gate passes.
+- Keyword **search** of the Cookidoo recipe library
+  (`search_recipes`), localized to the configured country/language.
+- Ingredient-based **suggestions** over the user's managed and custom
+  collections (`suggest_recipes_from_ingredients`).
+
+### Collections (managed + custom)
+
+- Browse and subscribe to / unsubscribe from Cookidoo-curated managed
+  collections.
+- Full CRUD over custom collections: create, list, delete, add recipes,
+  remove a single recipe.
+
+### Shopping list
+
+- Read the full list grouped by source (recipe ingredients vs. free-text
+  items).
+- Push and pull recipe ingredients for regular **and** custom recipes
+  (`add_recipes_to_shopping_list`, `add_custom_recipes_to_shopping_list`,
+  the matching `remove_*` variants).
+- Add, remove, rename, and check / uncheck free-text shopping items
+  (`add_additional_items`, `rename_additional_items`,
+  `set_additional_items_ownership`).
+- Check / uncheck recipe-derived ingredient items
+  (`set_ingredient_items_ownership`).
+- Wipe the whole list in one call.
+
+### Calendar / meal plan
+
+- Read the meal plan for any week.
+- Schedule and remove regular **and** custom recipes on a specific date
+  (`add_recipes_to_calendar`, `add_custom_recipes_to_calendar`,
+  `remove_recipe_from_calendar`, `remove_custom_recipe_from_calendar`).
+
+### Quality, safety & transport
+
+- Thermomix [quality gate](#quality-gate) that scores every draft and
+  refuses low-quality custom recipe uploads unless explicitly forced.
+- All credentials kept in memory as `SecretStr`, with email + token
+  redaction in every log message and upstream error body.
+- Per-request HTTP timeout; reentrant, lock-protected session lifecycle.
+- Dual transport: stdio (default) and streamable HTTP.
 
 ## Requirements
 
@@ -139,7 +208,7 @@ The server is configured purely via environment variables (see
 | `COOKIDOO_MCP_MODE`     | no       | `stdio`     | Transport: `stdio` or `http`                             |
 | `COOKIDOO_MCP_HOST`     | no       | `127.0.0.1` | Bind host (HTTP only)                                    |
 | `COOKIDOO_MCP_PORT`     | no       | `8765`      | Bind port (HTTP only)                                    |
-| `COOKIDOO_QUALITY_BAR`  | no       | `70`        | Minimum TM7 quality score (0-100) for custom uploads     |
+| `COOKIDOO_QUALITY_BAR`  | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads |
 
 ## Tool reference
 
@@ -155,7 +224,7 @@ a strongly typed Pydantic DTO (see [`src/cookidoo_mcp/models.py`](src/cookidoo_m
 
 ### Recipes
 
-Lookup of any Cookidoo recipe plus the full TM7 custom-recipe workflow
+Lookup of any Cookidoo recipe plus the full custom-recipe workflow
 (generate → validate → upload, list / delete, scrape from supported sites).
 
 | Tool                        | Purpose                                                                                       |
@@ -163,10 +232,11 @@ Lookup of any Cookidoo recipe plus the full TM7 custom-recipe workflow
 | `get_recipe_details`        | Full details of a Cookidoo recipe by ID                                                       |
 | `get_custom_recipe_details` | Full details of one of your own custom recipes by ID                                          |
 | `generate_recipe_structure` | Build a validated custom-recipe draft (steps accept plain strings or structured `RecipeStep`s — see [Guided-cooking annotations](#guided-cooking-annotations)) |
-| `validate_recipe_quality`   | Score a draft against the TM7 quality bar without uploading                                   |
+| `validate_recipe_quality`   | Score a draft against the Thermomix recipe quality bar without uploading                      |
 | `upload_custom_recipe`      | Upload a draft (rolls back on failure, blocked by [Quality gate](#quality-gate))              |
 | `list_custom_recipes`       | List all custom recipes you own                                                               |
 | `delete_custom_recipe`      | Delete one of your custom recipes by ID                                                       |
+| `clone_recipe_as_custom`    | Copy a Cookidoo recipe into your custom recipes at a chosen serving size                      |
 | `import_web_recipe`         | Scrape a recipe; always returns the draft + quality report, uploads only when the gate passes |
 
 Custom recipe upload talks to the same undocumented `/created-recipes/{locale}`
@@ -187,22 +257,36 @@ endpoint that the official Cookidoo apps use.
 
 ### Shopping list
 
-| Tool                              | Purpose                                                  |
-| --------------------------------- | -------------------------------------------------------- |
-| `get_shopping_list`               | Return all items grouped by source (recipe / additional) |
-| `add_recipes_to_shopping_list`    | Add all ingredients of one or more recipes               |
-| `remove_recipes_from_shopping_list` | Remove ingredients of given recipes                      |
-| `add_additional_items`            | Add free-text items (not tied to a recipe)               |
-| `remove_additional_items`         | Remove free-text items by ID                             |
-| `clear_shopping_list`             | Remove every item from the list                          |
+| Tool                                       | Purpose                                                            |
+| ------------------------------------------ | ------------------------------------------------------------------ |
+| `get_shopping_list`                        | Return all items grouped by source (recipe / additional)           |
+| `add_recipes_to_shopping_list`             | Add all ingredients of one or more recipes                         |
+| `remove_recipes_from_shopping_list`        | Remove ingredients of given recipes                                |
+| `add_custom_recipes_to_shopping_list`      | Add all ingredients of one or more **custom** recipes              |
+| `remove_custom_recipes_from_shopping_list` | Remove ingredients of given **custom** recipes                     |
+| `set_ingredient_items_ownership`           | Check or uncheck recipe-derived ingredient items by ID             |
+| `add_additional_items`                     | Add free-text items (not tied to a recipe)                         |
+| `rename_additional_items`                  | Rename free-text items in place by ID                              |
+| `set_additional_items_ownership`           | Check or uncheck free-text items by ID                             |
+| `remove_additional_items`                  | Remove free-text items by ID                                       |
+| `clear_shopping_list`                      | Remove every item from the list                                    |
 
 ### Calendar / meal plan
 
-| Tool                         | Purpose                                              |
-| ---------------------------- | ---------------------------------------------------- |
-| `get_calendar_week`          | Meal plan for the week containing the given date     |
-| `add_recipes_to_calendar`    | Schedule one or more recipes on a specific date      |
-| `remove_recipe_from_calendar` | Remove a planned recipe from a date                  |
+| Tool                              | Purpose                                                  |
+| --------------------------------- | -------------------------------------------------------- |
+| `get_calendar_week`               | Meal plan for the week containing the given date         |
+| `add_recipes_to_calendar`         | Schedule one or more recipes on a specific date          |
+| `remove_recipe_from_calendar`     | Remove a planned recipe from a date                      |
+| `add_custom_recipes_to_calendar`  | Schedule one or more **custom** recipes on a date        |
+| `remove_custom_recipe_from_calendar` | Remove a planned **custom** recipe from a date        |
+
+### Discovery (search & suggestions)
+
+| Tool                                | Purpose                                                        |
+| ----------------------------------- | -------------------------------------------------------------- |
+| `search_recipes`                    | Keyword search of the Cookidoo recipe library                  |
+| `suggest_recipes_from_ingredients`  | Rank recipes in the user's collections by ingredient match     |
 
 ## Quality gate
 
@@ -216,7 +300,7 @@ mode, accessory mentions, parallelization hints, ingredient/step linkage).
 - `import_web_recipe` **never** raises on quality; it always returns a
   `WebImportResult` with `draft` + `quality` populated and `upload=null`
   + `blocked_reason` set when blocked. The caller (typically an LLM) can
-  read the scraped draft, rewrite the steps with TM7 guided-cooking
+  read the scraped draft, rewrite the steps with Thermomix guided-cooking
   annotations (e.g. `5 min / 100 °C / speed 3`) and resubmit via
   `upload_custom_recipe` — no second scrape needed.
 - Pass `force=true` on either tool to upload anyway after the user has
@@ -460,7 +544,7 @@ src/cookidoo_mcp/
 ├── annotation_models.py # Guided-cooking annotation DTOs (discriminated union)
 ├── session.py           # Repository facade over cookidoo-api + custom HTTP
 ├── transport.py         # Stdio / HTTP transport strategies
-├── quality.py           # TM7 quality rule strategies
+├── quality.py           # Thermomix recipe quality rule strategies
 ├── annotations.py       # Annotation inferrer (text patterns → StepAnnotation)
 ├── web_import.py        # recipe-scrapers adapter → CustomRecipeDraft
 ├── server.py        # FastMCP instance + lifespan
@@ -485,7 +569,7 @@ Install Python 3.12+ (macOS: `brew install python@3.12`; Debian/Ubuntu:
 Set a different port: `COOKIDOO_MCP_PORT=9000 ./run.sh`.
 
 **Custom recipe upload blocked by quality gate**
-Either improve the draft (add TM7 guided-cooking annotations such as
+Either improve the draft (add Thermomix guided-cooking annotations such as
 `5 min / 100 °C / speed 3` to each step), lower `COOKIDOO_QUALITY_BAR`, or
 re-issue the call with `force=true` after the user accepts the trade-off.
 
@@ -504,14 +588,15 @@ manual install, `pip install --upgrade 'cookidoo-api>=0.17.1'`.
 
 ## Credits
 
-This project consolidates ideas and tool coverage from four predecessor
-MCP servers, built on the work of the upstream Cookidoo client:
+Built on top of the unofficial API client and informed by the
+earlier community MCP servers in this space. Thanks to:
 
-- [`miaucl/cookidoo-api`](https://github.com/miaucl/cookidoo-api) — the reverse-engineered async Cookidoo client this server wraps
+- [`miaucl/cookidoo-api`](https://github.com/miaucl/cookidoo-api)
 - [`alexandrepa/mcp-cookidoo`](https://github.com/alexandrepa/mcp-cookidoo)
 - [`Xdev22/cookidoo-mcp`](https://github.com/Xdev22/cookidoo-mcp)
 - [`detef10/cookidoo-mcp`](https://github.com/detef10/cookidoo-mcp)
 - [`danielkliem/mcp-cookidoo`](https://github.com/danielkliem/mcp-cookidoo)
+- [`otisthescribe/cookidoo-mcp`](https://github.com/otisthescribe/cookidoo-mcp)
 
 ## Disclaimer & trademarks
 

@@ -1,4 +1,4 @@
-"""TM7 guided-cooking quality scoring.
+"""Thermomix guided-cooking quality scoring.
 
 Each `QualityRule` evaluates a `CustomRecipeDraft` and emits `QualityIssue`s
 with a per-rule weight. The aggregate score is ``max(0, 100 - sum(weights))``.
@@ -83,7 +83,7 @@ class RuleResult:
 
 
 class QualityRule(ABC):
-    """A single TM7 quality heuristic."""
+    """A single Thermomix recipe quality heuristic."""
 
     name: ClassVar[str]
     weight: ClassVar[int]

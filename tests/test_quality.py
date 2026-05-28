@@ -1,4 +1,4 @@
-"""Tests for the TM7 quality scoring rules."""
+"""Tests for the Thermomix recipe quality scoring rules."""
 
 from __future__ import annotations
 

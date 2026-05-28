@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager, suppress
 from datetime import date
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, Self
-from urllib.parse import urlsplit
+from urllib.parse import quote, quote_plus, urlencode, urlsplit
 
 from aiohttp import (
     ClientError,
@@ -37,9 +37,12 @@ from .constants import (
     CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS,
     CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS,
     HTTP_TIMEOUT_SECONDS,
+    SUGGEST_MIN_INGREDIENT_LENGTH,
+    SUGGEST_RECIPE_FETCH_CONCURRENCY,
 )
 from .errors import AuthenticationError, NotFoundError, UpstreamApiError
 from .models import (
+    AdditionalItemRename,
     CalendarDay,
     CalendarRecipe,
     CollectionSummary,
@@ -48,7 +51,10 @@ from .models import (
     CustomRecipeSummary,
     Ingredient,
     RecipeDetails,
+    RecipeSearchResult,
     RecipeStep,
+    RecipeSuggestion,
+    ShoppingItemOwnershipUpdate,
     ShoppingItemSource,
     ShoppingList,
     ShoppingListItem,
@@ -117,9 +123,36 @@ class CookidooSessionProtocol(Protocol):
     async def get_calendar_week(self, day: date) -> list[CalendarDay]: ...
     async def add_recipes_to_calendar(self, day: date, recipe_ids: list[str]) -> CalendarDay: ...
     async def remove_recipe_from_calendar(self, day: date, recipe_id: str) -> CalendarDay: ...
+    async def add_custom_recipes_to_calendar(
+        self, day: date, recipe_ids: list[str]
+    ) -> CalendarDay: ...
+    async def remove_custom_recipe_from_calendar(
+        self, day: date, recipe_id: str
+    ) -> CalendarDay: ...
     async def list_custom_recipes(self) -> list[CustomRecipeSummary]: ...
     async def upload_custom_recipe(self, draft: CustomRecipeDraft) -> tuple[str, str]: ...
     async def delete_custom_recipe(self, recipe_id: str) -> None: ...
+    async def clone_recipe_as_custom(
+        self, recipe_id: str, serving_size: int
+    ) -> CustomRecipeDetails: ...
+    async def add_custom_recipes_to_shopping_list(self, recipe_ids: list[str]) -> int: ...
+    async def remove_custom_recipes_from_shopping_list(self, recipe_ids: list[str]) -> None: ...
+    async def set_ingredient_items_ownership(
+        self, updates: list[ShoppingItemOwnershipUpdate]
+    ) -> list[ShoppingListItem]: ...
+    async def set_additional_items_ownership(
+        self, updates: list[ShoppingItemOwnershipUpdate]
+    ) -> list[ShoppingListItem]: ...
+    async def rename_additional_items(
+        self, updates: list[AdditionalItemRename]
+    ) -> list[ShoppingListItem]: ...
+    async def search_recipes(self, query: str, limit: int = 10) -> list[RecipeSearchResult]: ...
+    async def suggest_recipes_from_ingredients(
+        self,
+        available_ingredients: list[str],
+        collection_ids: list[str] | None = None,
+        max_results: int = 10,
+    ) -> list[RecipeSuggestion]: ...
     async def aclose(self) -> None: ...
 
 
@@ -465,6 +498,243 @@ class CookidooSession:
         updated = await self._run(lambda c: c.remove_recipe_from_calendar(day, recipe_id))
         return _calendar_to_dto(updated)
 
+    async def add_custom_recipes_to_calendar(self, day: date, recipe_ids: list[str]) -> CalendarDay:
+        updated = await self._run(lambda c: c.add_custom_recipes_to_calendar(day, recipe_ids))
+        return _calendar_to_dto(updated)
+
+    async def remove_custom_recipe_from_calendar(self, day: date, recipe_id: str) -> CalendarDay:
+        updated = await self._run(lambda c: c.remove_custom_recipe_from_calendar(day, recipe_id))
+        return _calendar_to_dto(updated)
+
+    async def add_custom_recipes_to_shopping_list(self, recipe_ids: list[str]) -> int:
+        added = await self._run(lambda c: c.add_ingredient_items_for_custom_recipes(recipe_ids))
+        return len(added)
+
+    async def remove_custom_recipes_from_shopping_list(self, recipe_ids: list[str]) -> None:
+        await self._run(lambda c: c.remove_ingredient_items_for_custom_recipes(recipe_ids))
+
+    async def set_ingredient_items_ownership(
+        self, updates: list[ShoppingItemOwnershipUpdate]
+    ) -> list[ShoppingListItem]:
+        # cookidoo-api accepts only the id and is_owned fields on the
+        # CookidooIngredientItem dataclass; name/description are placeholders
+        # the upstream ignores when patching ownership.
+        from cookidoo_api.types import CookidooIngredientItem
+
+        items = [
+            CookidooIngredientItem(id=u.id, name="", is_owned=u.is_owned, description="")
+            for u in updates
+        ]
+        result = await self._run(lambda c: c.edit_ingredient_items_ownership(items))
+        return [
+            ShoppingListItem(
+                id=item.id,
+                name=item.name,
+                description=getattr(item, "description", None),
+                is_owned=item.is_owned,
+                source=ShoppingItemSource.RECIPE,
+            )
+            for item in result
+        ]
+
+    async def set_additional_items_ownership(
+        self, updates: list[ShoppingItemOwnershipUpdate]
+    ) -> list[ShoppingListItem]:
+        from cookidoo_api.types import CookidooAdditionalItem
+
+        items = [CookidooAdditionalItem(id=u.id, name="", is_owned=u.is_owned) for u in updates]
+        result = await self._run(lambda c: c.edit_additional_items_ownership(items))
+        return [
+            ShoppingListItem(
+                id=item.id,
+                name=item.name,
+                description=None,
+                is_owned=item.is_owned,
+                source=ShoppingItemSource.ADDITIONAL,
+            )
+            for item in result
+        ]
+
+    async def rename_additional_items(
+        self, updates: list[AdditionalItemRename]
+    ) -> list[ShoppingListItem]:
+        from cookidoo_api.types import CookidooAdditionalItem
+
+        items = [CookidooAdditionalItem(id=u.id, name=u.name, is_owned=False) for u in updates]
+        result = await self._run(lambda c: c.edit_additional_items(items))
+        return [
+            ShoppingListItem(
+                id=item.id,
+                name=item.name,
+                description=None,
+                is_owned=item.is_owned,
+                source=ShoppingItemSource.ADDITIONAL,
+            )
+            for item in result
+        ]
+
+    async def clone_recipe_as_custom(
+        self, recipe_id: str, serving_size: int
+    ) -> CustomRecipeDetails:
+        # Write op: a 4xx/5xx is not "not found" — let UpstreamApiError surface unchanged.
+        recipe = await self._run(lambda c: c.add_custom_recipe_from(recipe_id, serving_size))
+        return CustomRecipeDetails(
+            id=recipe.id,
+            name=recipe.name,
+            url=recipe.url,
+            serving_size=recipe.serving_size,
+            active_time_seconds=recipe.active_time,
+            total_time_seconds=recipe.total_time,
+            tools=list(recipe.tools),
+            ingredients=list(recipe.ingredients),
+            instructions=list(recipe.instructions),
+            thumbnail=recipe.thumbnail,
+            image=recipe.image,
+        )
+
+    async def search_recipes(self, query: str, limit: int = 10) -> list[RecipeSearchResult]:
+        limit = max(1, min(limit, 50))
+        client = await self._ensure_logged_in()
+        localization = client.localization
+        origin = _localization_origin(localization.url)
+        # The Cookidoo search API isn't exposed by cookidoo-api, but the
+        # public web app hits the same /search/{language} endpoint. The
+        # OAuth2 cookie populated by client.login() authenticates it.
+        #
+        # Encoding discipline: language goes into the path so reserved chars
+        # MUST be percent-encoded (``safe=""``). The query parameters use
+        # ``quote_plus`` so a literal ``+`` survives the round-trip — without
+        # it, ``"A+B Sauce"`` would be forwarded as ``"A B Sauce"`` because
+        # the upstream decodes ``+`` as a space.
+        language_path = quote(localization.language, safe="")
+        params = urlencode(
+            {
+                "query": query,
+                "context": "recipes",
+                "countries": localization.country_code,
+                "limit": limit,
+            },
+            quote_via=quote_plus,
+        )
+        url = f"{origin}/search/{language_path}?{params}"
+        async with self._authed_http("GET", url) as response:
+            payload = await _parse_json(response)
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, list):
+            return []
+        return [item for item in (_search_item_to_dto(raw) for raw in data) if item is not None]
+
+    async def suggest_recipes_from_ingredients(
+        self,
+        available_ingredients: list[str],
+        collection_ids: list[str] | None = None,
+        max_results: int = 10,
+    ) -> list[RecipeSuggestion]:
+        # Short tokens explode the substring matcher (``"oil"`` → ``"soil"``,
+        # ``"egg"`` → ``"eggplant"``). Drop them at the boundary instead of
+        # silently inflating every recipe's score. Check this BEFORE walking
+        # collections so a useless ingredient list never triggers HTTP work.
+        available_lower = {
+            ing.lower().strip()
+            for ing in available_ingredients
+            if len(ing.strip()) >= SUGGEST_MIN_INGREDIENT_LENGTH
+        }
+        if not available_lower:
+            return []
+
+        recipe_ids = await self._collect_recipe_ids(collection_ids)
+        if not recipe_ids:
+            return []
+
+        semaphore = asyncio.Semaphore(SUGGEST_RECIPE_FETCH_CONCURRENCY)
+
+        async def _fetch(rid: str) -> RecipeDetails | None:
+            async with semaphore:
+                try:
+                    return await self.get_recipe_details(rid)
+                except NotFoundError as e:
+                    # Custom-recipe IDs that slipped in via a custom collection
+                    # 404 here. That's expected; everything else (auth,
+                    # network) propagates so the caller sees the real problem.
+                    _LOGGER.debug("Skipping recipe %s during suggestion: %s", rid, e)
+                    return None
+
+        fetched = await asyncio.gather(*(_fetch(rid) for rid in recipe_ids))
+
+        suggestions: list[RecipeSuggestion] = []
+        for details in fetched:
+            if details is None:
+                continue
+            ingredient_names = [i.name.lower().strip() for i in details.ingredients]
+            matching = [
+                name
+                for name in ingredient_names
+                if any(avail in name or name in avail for avail in available_lower)
+            ]
+            if not matching:
+                continue
+            missing = [name for name in ingredient_names if name not in matching]
+            total = max(len(ingredient_names), 1)
+            suggestions.append(
+                RecipeSuggestion(
+                    recipe=details,
+                    score=round(len(matching) / total, 2),
+                    matching_ingredients=matching,
+                    missing_ingredients=missing,
+                    total_ingredients=len(ingredient_names),
+                )
+            )
+
+        suggestions.sort(key=lambda s: s.score, reverse=True)
+        return suggestions[:max_results]
+
+    async def _collect_recipe_ids(self, collection_ids: list[str] | None) -> list[str]:
+        """Resolve a list of collection IDs (or every collection) to recipe IDs.
+
+        Walks every page of both the managed and custom collection endpoints.
+        Hard-coding ``page=0`` here would silently drop recipes that live on a
+        second page for any reasonably-sized library.
+        """
+        managed, custom = await asyncio.gather(
+            self._drain_managed_collections(),
+            self._drain_custom_collections(),
+        )
+        collections: list[Any] = [*managed, *custom]
+        if collection_ids is not None:
+            wanted = set(collection_ids)
+            collections = [c for c in collections if getattr(c, "id", None) in wanted]
+
+        seen: dict[str, None] = {}
+        for collection in collections:
+            for chapter in getattr(collection, "chapters", []) or []:
+                for recipe in getattr(chapter, "recipes", []) or []:
+                    rid = getattr(recipe, "id", None)
+                    if isinstance(rid, str) and rid and rid not in seen:
+                        seen[rid] = None
+        return list(seen)
+
+    async def _drain_managed_collections(self) -> list[Any]:
+        _, pages = await self._run(lambda c: c.count_managed_collections())
+        if pages <= 0:
+            return []
+
+        async def _page(page_index: int) -> list[Any]:
+            return await self._run(lambda c: c.get_managed_collections(page=page_index))
+
+        page_results = await asyncio.gather(*(_page(i) for i in range(pages)))
+        return [item for page in page_results for item in page]
+
+    async def _drain_custom_collections(self) -> list[Any]:
+        _, pages = await self._run(lambda c: c.count_custom_collections())
+        if pages <= 0:
+            return []
+
+        async def _page(page_index: int) -> list[Any]:
+            return await self._run(lambda c: c.get_custom_collections(page=page_index))
+
+        page_results = await asyncio.gather(*(_page(i) for i in range(pages)))
+        return [item for page in page_results for item in page]
+
     async def list_custom_recipes(self) -> list[CustomRecipeSummary]:
         url = await self._custom_recipes_url()
         async with self._authed_http("GET", url) as response:
@@ -725,6 +995,63 @@ def _parse_duration_seconds(value: Any) -> int | None:
             + (int(minutes) if minutes else 0) * 60
             + (int(seconds) if seconds else 0)
         )
+    return None
+
+
+_IMAGE_TRANSFORMATION_PLACEHOLDER = "{transformation}"
+_IMAGE_TRANSFORMATION_DEFAULT = "t_web_shared_recipe_221x240"
+
+
+def _search_item_to_dto(item: Any) -> RecipeSearchResult | None:
+    if not isinstance(item, dict):
+        return None
+    recipe_id = item.get("id")
+    if not isinstance(recipe_id, str) or not recipe_id:
+        return None
+    name = item.get("title")
+    if not isinstance(name, str) or not name:
+        # A search hit with no usable title would surface as a blank entry
+        # to the LLM. Dropping it is safer than passing an empty string up.
+        return None
+    raw_image = item.get("image")
+    image = (
+        raw_image.replace(_IMAGE_TRANSFORMATION_PLACEHOLDER, _IMAGE_TRANSFORMATION_DEFAULT)
+        if isinstance(raw_image, str) and raw_image
+        else None
+    )
+    return RecipeSearchResult(
+        id=recipe_id,
+        name=name,
+        rating=_coerce_number(item.get("rating")),
+        number_of_ratings=_coerce_int(item.get("numberOfRatings")),
+        total_time_seconds=_parse_duration_seconds(item.get("totalTime")),
+        image=image,
+    )
+
+
+def _coerce_number(value: Any) -> float | None:
+    """Return ``value`` as a float, or ``None`` if it isn't a real number.
+
+    ``bool`` is excluded explicitly because ``isinstance(True, int)`` is true
+    in Python, and we don't want ``True``/``False`` to silently become ``1.0``
+    / ``0.0`` if the upstream ever reuses a numeric field for a flag.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _coerce_int(value: Any) -> int | None:
+    """Return ``value`` as an int. Accepts ``int`` AND ``float`` (some JSON
+    producers serialize integer counts as ``42.0``); rejects ``bool``."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
     return None
 
 

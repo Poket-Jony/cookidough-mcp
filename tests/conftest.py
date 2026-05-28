@@ -14,6 +14,7 @@ from pydantic import SecretStr
 from cookidoo_mcp.config import Settings
 from cookidoo_mcp.context import AppContext
 from cookidoo_mcp.models import (
+    AdditionalItemRename,
     CalendarDay,
     CalendarRecipe,
     CollectionSummary,
@@ -21,6 +22,9 @@ from cookidoo_mcp.models import (
     CustomRecipeSummary,
     Ingredient,
     RecipeDetails,
+    RecipeSearchResult,
+    RecipeSuggestion,
+    ShoppingItemOwnershipUpdate,
     ShoppingItemSource,
     ShoppingList,
     ShoppingListItem,
@@ -36,6 +40,14 @@ from cookidoo_mcp.web_import import WebRecipeImporter
 class _Calls:
     add_recipes_to_shopping_list: list[list[str]] = field(default_factory=list)
     upload_drafts: list[Any] = field(default_factory=list)
+    add_custom_recipes_to_shopping_list: list[list[str]] = field(default_factory=list)
+    add_custom_recipes_to_calendar: list[tuple[date, list[str]]] = field(default_factory=list)
+    set_ingredient_ownership: list[list[ShoppingItemOwnershipUpdate]] = field(default_factory=list)
+    set_additional_ownership: list[list[ShoppingItemOwnershipUpdate]] = field(default_factory=list)
+    rename_additional: list[list[AdditionalItemRename]] = field(default_factory=list)
+    clone_recipe_as_custom: list[tuple[str, int]] = field(default_factory=list)
+    search_recipes: list[tuple[str, int]] = field(default_factory=list)
+    suggest_calls: list[tuple[list[str], list[str] | None, int]] = field(default_factory=list)
 
 
 class FakeSession:
@@ -161,6 +173,13 @@ class FakeSession:
     async def remove_recipe_from_calendar(self, day: date, recipe_id: str) -> CalendarDay:
         return CalendarDay(id=day.isoformat(), title="Monday")
 
+    async def add_custom_recipes_to_calendar(self, day: date, recipe_ids: list[str]) -> CalendarDay:
+        self.calls.add_custom_recipes_to_calendar.append((day, list(recipe_ids)))
+        return CalendarDay(id=day.isoformat(), title="Monday", custom_recipe_ids=list(recipe_ids))
+
+    async def remove_custom_recipe_from_calendar(self, day: date, recipe_id: str) -> CalendarDay:
+        return CalendarDay(id=day.isoformat(), title="Monday")
+
     async def list_custom_recipes(self) -> list[CustomRecipeSummary]:
         return [CustomRecipeSummary(recipe_id="cr1", name="Test")]
 
@@ -170,6 +189,96 @@ class FakeSession:
 
     async def delete_custom_recipe(self, recipe_id: str) -> None:
         return None
+
+    async def clone_recipe_as_custom(
+        self, recipe_id: str, serving_size: int
+    ) -> CustomRecipeDetails:
+        self.calls.clone_recipe_as_custom.append((recipe_id, serving_size))
+        return CustomRecipeDetails(
+            id=f"clone-of-{recipe_id}",
+            name="Cloned",
+            url=f"https://cookidoo.de/recipes/custom-recipes/clone-of-{recipe_id}",
+            serving_size=serving_size,
+        )
+
+    async def add_custom_recipes_to_shopping_list(self, recipe_ids: list[str]) -> int:
+        self.calls.add_custom_recipes_to_shopping_list.append(list(recipe_ids))
+        return len(recipe_ids) * 2
+
+    async def remove_custom_recipes_from_shopping_list(self, recipe_ids: list[str]) -> None:
+        return None
+
+    async def set_ingredient_items_ownership(
+        self, updates: list[ShoppingItemOwnershipUpdate]
+    ) -> list[ShoppingListItem]:
+        self.calls.set_ingredient_ownership.append(list(updates))
+        return [
+            ShoppingListItem(
+                id=u.id, name="x", is_owned=u.is_owned, source=ShoppingItemSource.RECIPE
+            )
+            for u in updates
+        ]
+
+    async def set_additional_items_ownership(
+        self, updates: list[ShoppingItemOwnershipUpdate]
+    ) -> list[ShoppingListItem]:
+        self.calls.set_additional_ownership.append(list(updates))
+        return [
+            ShoppingListItem(
+                id=u.id, name="x", is_owned=u.is_owned, source=ShoppingItemSource.ADDITIONAL
+            )
+            for u in updates
+        ]
+
+    async def rename_additional_items(
+        self, updates: list[AdditionalItemRename]
+    ) -> list[ShoppingListItem]:
+        self.calls.rename_additional.append(list(updates))
+        return [
+            ShoppingListItem(id=u.id, name=u.name, source=ShoppingItemSource.ADDITIONAL)
+            for u in updates
+        ]
+
+    async def search_recipes(self, query: str, limit: int = 10) -> list[RecipeSearchResult]:
+        self.calls.search_recipes.append((query, limit))
+        return [
+            RecipeSearchResult(
+                id="s1",
+                name=f"Result for {query}",
+                rating=4.5,
+                number_of_ratings=10,
+                total_time_seconds=1800,
+                image=None,
+            )
+        ]
+
+    async def suggest_recipes_from_ingredients(
+        self,
+        available_ingredients: list[str],
+        collection_ids: list[str] | None = None,
+        max_results: int = 10,
+    ) -> list[RecipeSuggestion]:
+        self.calls.suggest_calls.append(
+            (
+                list(available_ingredients),
+                list(collection_ids) if collection_ids else None,
+                max_results,
+            )
+        )
+        return [
+            RecipeSuggestion(
+                recipe=RecipeDetails(
+                    id="sug1",
+                    name="Suggested",
+                    url="https://cookidoo.de/recipes/sug1",
+                    ingredients=[Ingredient(id="i", name=available_ingredients[0])],
+                ),
+                score=1.0,
+                matching_ingredients=[available_ingredients[0]],
+                missing_ingredients=[],
+                total_ingredients=1,
+            )
+        ]
 
     async def aclose(self) -> None:
         return None

@@ -121,6 +121,7 @@ FUTURE_TEST_DAY = "2099-01-01"
 # section is SKIPPED when the account already has it subscribed, so a failed
 # cleanup cannot orphan the user without it.
 SMOKE_MANAGED_COLLECTION_ID = "col371088"  # "#zuHausemitThermomix"
+SMOKE_CLONE_RECIPE_ID = "r469077"
 
 # Per-tool RPC timeout. The first call triggers ``run.sh``'s bootstrap (~2 s on
 # warm checkouts, longer on a cold .venv) and the live Cookidoo login (~3-5 s),
@@ -230,8 +231,11 @@ async def main() -> int:
     created_collection_id: str | None = None
     created_item_ids: list[str] = []
     created_recipe_id: str | None = None
+    cloned_recipe_id: str | None = None
     planned_calendar_day: str | None = None
     planned_calendar_recipe_id: str | None = None
+    planned_custom_calendar_day: str | None = None
+    planned_custom_calendar_recipe_id: str | None = None
     pending_managed_collection_id: str | None = None
     failures = 0
     recipe_id_for_lookup: str | None = None
@@ -386,6 +390,45 @@ async def main() -> int:
                 for issue in report["issues"][:3]:
                     info(f"- {issue['rule']} [{issue['severity']}]: {issue['message']}")
 
+                section("Recipe search (read-only)")
+                # ``Pasta`` is recognised across every Cookidoo locale, so the
+                # search hit count is expected to be > 0 on a live account.
+                try:
+                    search_results = await _call(mcp, "search_recipes", query="Pasta", limit=5)
+                    ok(f"search_recipes returned {len(search_results)} hit(s) for 'Pasta'")
+                    for hit in search_results[:3]:
+                        info(f"- {hit['name']!r} (id={hit['id']})")
+                    if recipe_id_for_lookup is None and search_results:
+                        # Adopt a hit as the recipe-id source for the
+                        # downstream write sections (clone, calendar, shopping
+                        # ingredient cycle) when the calendar yielded none.
+                        recipe_id_for_lookup = search_results[0]["id"]
+                        info(f"adopted {recipe_id_for_lookup!r} from search for downstream tests")
+                except Exception as e:
+                    failures += 1
+                    fail(f"search_recipes raised: {e!r}")
+
+                section("Recipe suggestions from ingredients (read-only)")
+                # ``_collect_recipe_ids`` walks every page of every collection,
+                # so cap ``max_results`` and use short, common ingredients
+                # that pass the >=3 char min-length guard.
+                try:
+                    suggestions = await _call(
+                        mcp,
+                        "suggest_recipes_from_ingredients",
+                        available_ingredients=["Salz", "Mehl"],
+                        max_results=2,
+                    )
+                    ok(
+                        f"suggest_recipes_from_ingredients returned "
+                        f"{len(suggestions)} suggestion(s)"
+                    )
+                    for s in suggestions[:2]:
+                        info(f"- {s['recipe']['name']!r} (score={s['score']})")
+                except Exception as e:
+                    failures += 1
+                    fail(f"suggest_recipes_from_ingredients raised: {e!r}")
+
                 section("WRITE: managed collection add+remove (hardcoded catalog ID)")
                 already_subscribed = any(c["id"] == SMOKE_MANAGED_COLLECTION_ID for c in managed)
                 if already_subscribed:
@@ -501,6 +544,57 @@ async def main() -> int:
                 created_item_ids = [i["id"] for i in items]
                 ok(f"added {len(items)} item(s): {[i['name'] for i in items]}")
 
+                section("WRITE: additional item rename + ownership toggle")
+                # Both calls go to /shopping/{lang}/additional-items/* and
+                # share the additional-item id. We rename + tick, then
+                # restore the original name + clear the owned flag so the
+                # trailing artefact probe (which matches by full name) and
+                # the explicit ``remove_additional_items`` cleanup still
+                # see the item under ``ITEM_NAME``.
+                if created_item_ids:
+                    renamed_name = f"[SMOKE_TEST cookidoo-mcp] renamed {MARKER}"
+                    try:
+                        renamed = await _call(
+                            mcp,
+                            "rename_additional_items",
+                            updates=[{"id": created_item_ids[0], "name": renamed_name}],
+                        )
+                        if renamed and renamed[0]["name"] == renamed_name:
+                            ok(f"renamed item to {renamed_name!r}")
+                        else:
+                            failures += 1
+                            fail(f"rename_additional_items returned: {renamed!r}")
+
+                        ticked = await _call(
+                            mcp,
+                            "set_additional_items_ownership",
+                            updates=[{"id": created_item_ids[0], "is_owned": True}],
+                        )
+                        if ticked and ticked[0]["is_owned"] is True:
+                            ok("ticked additional item as owned")
+                        else:
+                            failures += 1
+                            fail(f"set_additional_items_ownership returned: {ticked!r}")
+
+                        # Restore name + ownership so downstream cleanup can
+                        # identify the item by its original ITEM_NAME marker.
+                        await _call(
+                            mcp,
+                            "rename_additional_items",
+                            updates=[{"id": created_item_ids[0], "name": ITEM_NAME}],
+                        )
+                        await _call(
+                            mcp,
+                            "set_additional_items_ownership",
+                            updates=[{"id": created_item_ids[0], "is_owned": False}],
+                        )
+                        ok("restored name + ownership for safe cleanup")
+                    except Exception as e:
+                        failures += 1
+                        fail(f"additional-item rename/ownership cycle raised: {e!r}")
+                else:
+                    warn("no additional item created — skipping rename/ownership cycle")
+
                 section("WRITE: recipe ingredients shopping list add+remove")
                 if recipe_id_for_lookup:
                     try:
@@ -510,6 +604,35 @@ async def main() -> int:
                             recipe_ids=[recipe_id_for_lookup],
                         )
                         ok(f"add_recipes_to_shopping_list returned: {add_msg!r}")
+                        # Toggle one of the just-added ingredient items so we
+                        # also exercise set_ingredient_items_ownership while
+                        # we have a real recipe-derived item ID in hand. The
+                        # subsequent remove_recipes_from_shopping_list call
+                        # drops the items regardless of their owned flag.
+                        shop_after_add = await _call(mcp, "get_shopping_list")
+                        target_item = next(
+                            (i for i in shop_after_add["ingredient_items"] if i.get("id")),
+                            None,
+                        )
+                        if target_item is None:
+                            warn(
+                                "no recipe-derived ingredient items present — "
+                                "skipping set_ingredient_items_ownership"
+                            )
+                        else:
+                            toggled = await _call(
+                                mcp,
+                                "set_ingredient_items_ownership",
+                                updates=[{"id": target_item["id"], "is_owned": True}],
+                            )
+                            if toggled and any(
+                                i["id"] == target_item["id"] and i["is_owned"] is True
+                                for i in toggled
+                            ):
+                                ok(f"ticked ingredient item {target_item['id']!r}")
+                            else:
+                                failures += 1
+                                fail(f"set_ingredient_items_ownership returned: {toggled!r}")
                         remove_msg = await _call(
                             mcp,
                             "remove_recipes_from_shopping_list",
@@ -574,6 +697,43 @@ async def main() -> int:
                 else:
                     warn("upload failed earlier — skipping get_custom_recipe_details")
 
+                section("WRITE: clone_recipe_as_custom")
+                try:
+                    cloned = await _call(
+                        mcp,
+                        "clone_recipe_as_custom",
+                        recipe_id=SMOKE_CLONE_RECIPE_ID,
+                        serving_size=2,
+                    )
+                    cloned_recipe_id = cloned["id"]
+                    ok(f"cloned {SMOKE_CLONE_RECIPE_ID!r} -> custom recipe id={cloned_recipe_id}")
+                except Exception as e:
+                    failures += 1
+                    fail(f"clone_recipe_as_custom raised: {e!r}")
+
+                section("WRITE: custom recipe shopping list add+remove")
+                if created_recipe_id is not None:
+                    try:
+                        add_msg = await _call(
+                            mcp,
+                            "add_custom_recipes_to_shopping_list",
+                            recipe_ids=[created_recipe_id],
+                        )
+                        ok(f"add_custom_recipes_to_shopping_list returned: {add_msg!r}")
+                        remove_msg = await _call(
+                            mcp,
+                            "remove_custom_recipes_from_shopping_list",
+                            recipe_ids=[created_recipe_id],
+                        )
+                        ok(f"remove_custom_recipes_from_shopping_list returned: {remove_msg!r}")
+                    except Exception as e:
+                        failures += 1
+                        fail(f"custom-recipe shopping cycle raised: {e!r}")
+                else:
+                    warn(
+                        "no uploaded custom recipe available — skipping custom-recipe shopping test"
+                    )
+
                 section("WRITE: calendar add+remove (2099-01-01)")
                 if recipe_id_for_lookup:
                     try:
@@ -595,6 +755,32 @@ async def main() -> int:
                 else:
                     warn("no recipe ID available — skipping calendar write test")
 
+                section("WRITE: custom recipe calendar add+remove (2099-01-01)")
+                # Schedules the uploaded custom recipe on the same future date.
+                # Cookidoo can hold regular + custom recipes on the same day;
+                # the cleanup section removes each entry through its own
+                # endpoint to avoid relying on a cascade.
+                if created_recipe_id is not None:
+                    try:
+                        planned = await _call(
+                            mcp,
+                            "add_custom_recipes_to_calendar",
+                            day=FUTURE_TEST_DAY,
+                            recipe_ids=[created_recipe_id],
+                        )
+                        planned_custom_calendar_day = FUTURE_TEST_DAY
+                        planned_custom_calendar_recipe_id = created_recipe_id
+                        ok(
+                            f"planned custom recipe {created_recipe_id!r} on "
+                            f"{FUTURE_TEST_DAY}; day now has "
+                            f"{len(planned['custom_recipe_ids'])} custom recipe(s)"
+                        )
+                    except Exception as e:
+                        failures += 1
+                        fail(f"add_custom_recipes_to_calendar raised: {e!r}")
+                else:
+                    warn("no uploaded custom recipe available — skipping custom calendar test")
+
                 section("Cleanup (always runs)")
                 # Cleanup goes through the MCP protocol just like the writes
                 # themselves did, so any breakage in the tool layer surfaces
@@ -613,6 +799,24 @@ async def main() -> int:
                         failures += 1
                         fail(f"calendar cleanup failed: {e!r}")
 
+                # Drop the custom calendar entry BEFORE deleting the recipe
+                # itself; the upstream may otherwise leave a dangling entry.
+                if (
+                    planned_custom_calendar_day is not None
+                    and planned_custom_calendar_recipe_id is not None
+                ):
+                    try:
+                        await _call(
+                            mcp,
+                            "remove_custom_recipe_from_calendar",
+                            day=planned_custom_calendar_day,
+                            recipe_id=planned_custom_calendar_recipe_id,
+                        )
+                        ok(f"removed planned custom recipe from {planned_custom_calendar_day}")
+                    except Exception as e:
+                        failures += 1
+                        fail(f"custom calendar cleanup failed: {e!r}")
+
                 if created_recipe_id is not None:
                     try:
                         msg = await _call(mcp, "delete_custom_recipe", recipe_id=created_recipe_id)
@@ -620,6 +824,14 @@ async def main() -> int:
                     except Exception as e:
                         failures += 1
                         fail(f"custom recipe cleanup failed: {e!r}")
+
+                if cloned_recipe_id is not None:
+                    try:
+                        msg = await _call(mcp, "delete_custom_recipe", recipe_id=cloned_recipe_id)
+                        ok(f"deleted cloned recipe {cloned_recipe_id} ({msg})")
+                    except Exception as e:
+                        failures += 1
+                        fail(f"cloned recipe cleanup failed: {e!r}")
 
                 if created_item_ids:
                     try:

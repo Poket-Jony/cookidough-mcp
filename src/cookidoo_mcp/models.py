@@ -222,12 +222,47 @@ class UploadResult(_Model):
     quality: QualityReport
 
 
+class ShoppingItemOwnershipUpdate(_Model):
+    """Pair of (item id, new owned/checked state) used by the ownership tools."""
+
+    id: str = Field(min_length=1)
+    is_owned: bool
+
+
+class AdditionalItemRename(_Model):
+    """Pair of (additional-item id, new label) used by ``rename_additional_items``."""
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+
+
+class RecipeSearchResult(_Model):
+    """Single result from the Cookidoo recipe search."""
+
+    id: str = Field(min_length=1)
+    name: str
+    rating: float | None = None
+    number_of_ratings: int | None = None
+    total_time_seconds: int | None = None
+    image: str | None = None
+
+
+class RecipeSuggestion(_Model):
+    """A recipe ranked by ingredient match for ``suggest_recipes_from_ingredients``."""
+
+    recipe: RecipeDetails
+    score: float = Field(ge=0.0, le=1.0)
+    matching_ingredients: list[str] = Field(default_factory=list)
+    missing_ingredients: list[str] = Field(default_factory=list)
+    total_ingredients: int = Field(ge=0)
+
+
 class WebImportResult(_Model):
     """Outcome of `import_web_recipe`.
 
     ``draft`` and ``quality`` are always populated, even when the quality bar
     blocks the upload — that way the LLM caller can read the scraped recipe,
-    rework the steps into TM7 guided-cooking annotations, and resubmit via
+    rework the steps into Thermomix guided-cooking annotations, and resubmit via
     ``upload_custom_recipe``. ``upload`` is populated only when the gate
     passed or the call was forced.
     """

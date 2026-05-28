@@ -105,7 +105,7 @@ src/cookidoo_mcp/
 ├── models.py        # Pydantic DTOs for every tool I/O
 ├── session.py       # Repository facade over cookidoo-api + custom HTTP
 ├── transport.py     # Stdio / HTTP transport strategies
-├── quality.py            # TM7 quality rule strategy set
+├── quality.py            # Thermomix recipe quality rule strategy set
 ├── annotation_models.py  # Guided-cooking annotation DTOs (discriminated union)
 ├── annotations.py        # Annotation inferrer (text patterns → StepAnnotation)
 ├── web_import.py         # recipe-scrapers adapter → CustomRecipeDraft

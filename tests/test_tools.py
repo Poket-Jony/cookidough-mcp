@@ -11,7 +11,12 @@ from mcp.server.fastmcp import FastMCP
 
 from cookidoo_mcp.context import AppContext
 from cookidoo_mcp.errors import QualityGateError
-from cookidoo_mcp.models import CustomRecipeDraft, RecipeStep
+from cookidoo_mcp.models import (
+    AdditionalItemRename,
+    CustomRecipeDraft,
+    RecipeStep,
+    ShoppingItemOwnershipUpdate,
+)
 from cookidoo_mcp.tools import register_all
 
 from ._mcp_internals import get_tool_fn as _tool_fn
@@ -214,3 +219,116 @@ async def test_delete_custom_recipe(registered_mcp: FastMCP, fake_mcp_context: A
         fake_mcp_context, recipe_id="cr1"
     )
     assert "cr1" in message
+
+
+async def test_clone_recipe_as_custom(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    result = await _tool_fn(registered_mcp, "clone_recipe_as_custom")(
+        fake_mcp_context, recipe_id="r42", serving_size=2
+    )
+    assert result.id == "clone-of-r42"
+    assert result.serving_size == 2
+    assert fake_session.calls.clone_recipe_as_custom == [("r42", 2)]
+
+
+async def test_add_custom_recipes_to_calendar(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    day = date(2026, 6, 1)
+    result = await _tool_fn(registered_mcp, "add_custom_recipes_to_calendar")(
+        fake_mcp_context, day=day, recipe_ids=["cr1", "cr2"]
+    )
+    assert result.custom_recipe_ids == ["cr1", "cr2"]
+    assert fake_session.calls.add_custom_recipes_to_calendar == [(day, ["cr1", "cr2"])]
+
+
+async def test_remove_custom_recipe_from_calendar(
+    registered_mcp: FastMCP, fake_mcp_context: Any
+) -> None:
+    day = date(2026, 6, 1)
+    result = await _tool_fn(registered_mcp, "remove_custom_recipe_from_calendar")(
+        fake_mcp_context, day=day, recipe_id="cr1"
+    )
+    assert result.id == day.isoformat()
+
+
+async def test_add_custom_recipes_to_shopping_list_returns_message(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    message = await _tool_fn(registered_mcp, "add_custom_recipes_to_shopping_list")(
+        fake_mcp_context, recipe_ids=["cr1", "cr2"]
+    )
+    assert "2 custom recipe(s)" in message
+    assert fake_session.calls.add_custom_recipes_to_shopping_list == [["cr1", "cr2"]]
+
+
+async def test_remove_custom_recipes_from_shopping_list(
+    registered_mcp: FastMCP, fake_mcp_context: Any
+) -> None:
+    message = await _tool_fn(registered_mcp, "remove_custom_recipes_from_shopping_list")(
+        fake_mcp_context, recipe_ids=["cr1"]
+    )
+    assert "1 custom recipe(s)" in message
+
+
+async def test_set_ingredient_items_ownership(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    items = await _tool_fn(registered_mcp, "set_ingredient_items_ownership")(
+        fake_mcp_context,
+        updates=[
+            ShoppingItemOwnershipUpdate(id="i1", is_owned=True),
+            ShoppingItemOwnershipUpdate(id="i2", is_owned=False),
+        ],
+    )
+    assert [item.id for item in items] == ["i1", "i2"]
+    assert items[0].is_owned is True
+    assert fake_session.calls.set_ingredient_ownership[0][0].id == "i1"
+
+
+async def test_set_additional_items_ownership(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    items = await _tool_fn(registered_mcp, "set_additional_items_ownership")(
+        fake_mcp_context,
+        updates=[ShoppingItemOwnershipUpdate(id="a1", is_owned=True)],
+    )
+    assert items[0].source == "additional"
+    assert fake_session.calls.set_additional_ownership
+
+
+async def test_rename_additional_items(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    items = await _tool_fn(registered_mcp, "rename_additional_items")(
+        fake_mcp_context,
+        updates=[AdditionalItemRename(id="a1", name="Sea salt")],
+    )
+    assert items[0].name == "Sea salt"
+    assert fake_session.calls.rename_additional[0][0].name == "Sea salt"
+
+
+async def test_search_recipes(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    results = await _tool_fn(registered_mcp, "search_recipes")(
+        fake_mcp_context, query="pasta", limit=5
+    )
+    assert results[0].id == "s1"
+    assert "pasta" in results[0].name
+    assert fake_session.calls.search_recipes == [("pasta", 5)]
+
+
+async def test_suggest_recipes_from_ingredients(
+    registered_mcp: FastMCP, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    results = await _tool_fn(registered_mcp, "suggest_recipes_from_ingredients")(
+        fake_mcp_context,
+        available_ingredients=["rice"],
+        collection_ids=None,
+        max_results=5,
+    )
+    assert results[0].score == 1.0
+    assert results[0].matching_ingredients == ["rice"]
+    assert fake_session.calls.suggest_calls == [(["rice"], None, 5)]
