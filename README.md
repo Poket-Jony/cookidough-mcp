@@ -5,15 +5,15 @@
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-8A2BE2.svg)](https://modelcontextprotocol.io)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server for the
-Thermomix [Cookidoo](https://cookidoo.de) platform. Plug it into Claude
-Desktop, Claude Code or any other MCP-aware client and let your LLM search
-recipes, manage shopping lists and meal plans, and upload custom Thermomix recipes.
+An unofficial [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the
+Thermomix® [Cookidoo®](https://cookidoo.de) platform. Plug it into Claude Desktop,
+Claude Code or any other MCP-aware client and let your LLM search
+recipes, manage shopping lists and meal plans, and upload custom recipes.
 
 > **Unofficial project.** This is an independent, community-built MCP server.
 > It is **not** developed, sponsored, endorsed, or affiliated with Vorwerk,
-> Thermomix®, or Cookidoo®. The name "Cookidoo" is used here purely to
-> identify the third-party service this software talks to. See
+> Thermomix®, or Cookidoo®. The name "Thermomix" and "Cookidoo" is used here
+> purely to identify the third-party service this software talks to. See
 > [Disclaimer & trademarks](#disclaimer--trademarks) for details.
 
 - 37 MCP tools across 6 domains (auth, recipes, collections, shopping,
@@ -613,9 +613,9 @@ owners.
 
 **Account & terms:** Operating this server requires your own credentials.
 Your use of the service through this server remains subject to Vorwerk's official
-[Terms of Use](https://cookidoo.de/foundation/de-DE/terms-of-use) and
-[Privacy Policy](https://cookidoo.de/foundation/de-DE/privacy). This
-project does not redistribute Cookidoo content; recipes you fetch are
+[Terms of Use](https://cookidoo.de/consent/web/documents/de-DE/latest/tos) and
+[Privacy Policy](https://cookidoo.de/consent/web/customers/de-DE/documents/PRIVACY). This
+project does not redistribute Cookidoo® content; recipes you fetch are
 delivered directly from Vorwerk's servers to your client.
 
 **Warranty:** The software is provided "as is" without warranty of any
