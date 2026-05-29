@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import SecretStr
 
-from cookidoo_mcp.config import Settings
-from cookidoo_mcp.context import AppContext
-from cookidoo_mcp.models import (
+from cookidough_mcp.config import Settings
+from cookidough_mcp.context import AppContext
+from cookidough_mcp.models import (
     AdditionalItemRename,
     CalendarDay,
     CalendarRecipe,
@@ -31,9 +31,9 @@ from cookidoo_mcp.models import (
     Subscription,
     UserProfile,
 )
-from cookidoo_mcp.quality import QualityScorer
-from cookidoo_mcp.session import CookidooSessionProtocol
-from cookidoo_mcp.web_import import WebRecipeImporter
+from cookidough_mcp.quality import QualityScorer
+from cookidough_mcp.session import CookidooSessionProtocol
+from cookidough_mcp.web_import import WebRecipeImporter
 
 
 @dataclass

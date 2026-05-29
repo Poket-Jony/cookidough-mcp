@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cookidoo_mcp.annotation_models import (
+from cookidough_mcp.annotation_models import (
     BrowningModeAnnotation,
     BrowningModeData,
     BrowningPower,
@@ -17,7 +17,7 @@ from cookidoo_mcp.annotation_models import (
     TemperatureData,
     TtsAnnotationData,
 )
-from cookidoo_mcp.annotations import (
+from cookidough_mcp.annotations import (
     AnnotationInferrer,
     BrowningStrategy,
     DoughStrategy,

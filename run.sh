@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap and run the Cookidoo MCP server.
+# Bootstrap and run the Cookidough MCP server.
 #
 # - Detects a Python 3.12+ interpreter
 # - Creates `.venv/` if missing
@@ -8,7 +8,7 @@
 # - Loads `.env` (if present) into the environment
 # - Validates required credentials and execs the server
 #
-# Any arguments to this script are forwarded to `cookidoo-mcp`.
+# Any arguments to this script are forwarded to `cookidough-mcp`.
 
 set -euo pipefail
 
@@ -112,8 +112,8 @@ load_dotenv() {
 
 assert_credentials() {
     local missing=()
-    [ -z "${COOKIDOO_EMAIL:-}" ]    && missing+=("COOKIDOO_EMAIL")
-    [ -z "${COOKIDOO_PASSWORD:-}" ] && missing+=("COOKIDOO_PASSWORD")
+    [ -z "${COOKIDOUGH_EMAIL:-}" ]    && missing+=("COOKIDOUGH_EMAIL")
+    [ -z "${COOKIDOUGH_PASSWORD:-}" ] && missing+=("COOKIDOUGH_PASSWORD")
     if [ "${#missing[@]}" -eq 0 ]; then
         return
     fi
@@ -125,8 +125,8 @@ assert_credentials() {
 }
 
 start_server() {
-    log "Starting Cookidoo MCP server (transport: ${COOKIDOO_MCP_MODE:-stdio})"
-    exec "${VENV_BIN}/cookidoo-mcp" "$@"
+    log "Starting Cookidoo MCP server (transport: ${COOKIDOUGH_MCP_MODE:-stdio})"
+    exec "${VENV_BIN}/cookidough-mcp" "$@"
 }
 
 main() {

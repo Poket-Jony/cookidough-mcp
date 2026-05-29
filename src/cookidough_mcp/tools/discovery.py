@@ -20,7 +20,7 @@ def register(mcp: FastMCP) -> None:
 
         Returns up to ``limit`` (default 10, max 50) matching recipes sorted
         by Cookidoo's own relevance ranking. The query is matched against the
-        configured locale (`COOKIDOO_COUNTRY` / `COOKIDOO_LANGUAGE`).
+        configured locale (`COOKIDOUGH_COUNTRY` / `COOKIDOUGH_LANGUAGE`).
         """
         return await get_context(ctx).session.search_recipes(query, limit)
 

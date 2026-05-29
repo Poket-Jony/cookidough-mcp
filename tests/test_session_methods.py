@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock
 import pytest
 from cookidoo_api.exceptions import CookidooRequestException
 
-from cookidoo_mcp.errors import NotFoundError, UpstreamApiError
-from cookidoo_mcp.models import (
+from cookidough_mcp.errors import NotFoundError, UpstreamApiError
+from cookidough_mcp.models import (
     AdditionalItemRename,
     CustomRecipeDraft,
     RecipeStep,
     ShoppingItemOwnershipUpdate,
 )
-from cookidoo_mcp.session import CookidooSession
+from cookidough_mcp.session import CookidooSession
 
 
 class _NS:
@@ -119,8 +119,8 @@ async def test_upload_custom_recipe_times_out_cleanly_on_hanging_create(
     a single upload past Claude Desktop's 4-minute MCP-client timeout. The
     upload now has a hard per-step ``asyncio.wait_for`` upper bound and
     surfaces ``UpstreamApiError`` once it trips."""
-    from cookidoo_mcp.errors import UpstreamApiError
-    from cookidoo_mcp.models import CustomRecipeDraft, RecipeStep
+    from cookidough_mcp.errors import UpstreamApiError
+    from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
 
     session = CookidooSession(settings)
 
@@ -132,7 +132,7 @@ async def test_upload_custom_recipe_times_out_cleanly_on_hanging_create(
 
     monkeypatch.setattr(session, "_create_empty_custom_recipe", _never_returns)
     # Shrink the bound so the test stays fast.
-    monkeypatch.setattr("cookidoo_mcp.session.CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr("cookidough_mcp.session.CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS", 0.05)
 
     draft = CustomRecipeDraft(
         name="x",
@@ -151,8 +151,8 @@ async def test_upload_custom_recipe_times_out_and_rolls_back_on_hanging_patch(
 ) -> None:
     """If the PATCH step hangs, the stub created by the POST must be rolled
     back via ``delete_custom_recipe`` before the timeout error is surfaced."""
-    from cookidoo_mcp.errors import UpstreamApiError
-    from cookidoo_mcp.models import CustomRecipeDraft, RecipeStep
+    from cookidough_mcp.errors import UpstreamApiError
+    from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
 
     session = CookidooSession(settings)
     rollbacks: list[str] = []
@@ -169,8 +169,8 @@ async def test_upload_custom_recipe_times_out_and_rolls_back_on_hanging_patch(
     monkeypatch.setattr(session, "_create_empty_custom_recipe", _create_ok)
     monkeypatch.setattr(session, "_patch_custom_recipe", _patch_never_returns)
     monkeypatch.setattr(session, "delete_custom_recipe", _delete)
-    monkeypatch.setattr("cookidoo_mcp.session.CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS", 0)
-    monkeypatch.setattr("cookidoo_mcp.session.CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr("cookidough_mcp.session.CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS", 0)
+    monkeypatch.setattr("cookidough_mcp.session.CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS", 0.05)
 
     draft = CustomRecipeDraft(
         name="x",
@@ -317,7 +317,7 @@ async def test_upload_custom_recipe_rolls_back_on_patch_failure(
         raise RuntimeError("patch boom")
 
     monkeypatch.setattr(session, "_patch_custom_recipe", _bad_patch)
-    monkeypatch.setattr("cookidoo_mcp.session.asyncio.sleep", AsyncMock())
+    monkeypatch.setattr("cookidough_mcp.session.asyncio.sleep", AsyncMock())
 
     draft = CustomRecipeDraft(
         name="N",
@@ -349,8 +349,8 @@ async def test_upload_custom_recipe_rollback_is_itself_bounded_on_hang(
 
     monkeypatch.setattr(session, "_patch_custom_recipe", _bad_patch)
     monkeypatch.setattr(session, "delete_custom_recipe", _hanging_delete)
-    monkeypatch.setattr("cookidoo_mcp.session.CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS", 0)
-    monkeypatch.setattr("cookidoo_mcp.session.CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS", 0.05)
+    monkeypatch.setattr("cookidough_mcp.session.CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS", 0)
+    monkeypatch.setattr("cookidough_mcp.session.CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS", 0.05)
 
     draft = CustomRecipeDraft(
         name="N", ingredients=["A"], steps=[RecipeStep(text="Mix 5 min / speed 4.")]
@@ -483,7 +483,7 @@ async def test_suggest_recipes_from_ingredients_collects_and_scores(
     _mock_collections(fake, managed=[], custom=[collection])
 
     async def _details(rid: str) -> Any:
-        from cookidoo_mcp.models import Ingredient, RecipeDetails
+        from cookidough_mcp.models import Ingredient, RecipeDetails
 
         if rid == "r1":
             return RecipeDetails(
@@ -526,7 +526,7 @@ async def test_suggest_recipes_filters_by_collection_ids(
     seen: list[str] = []
 
     async def _details(rid: str) -> Any:
-        from cookidoo_mcp.models import Ingredient, RecipeDetails
+        from cookidough_mcp.models import Ingredient, RecipeDetails
 
         seen.append(rid)
         return RecipeDetails(
@@ -587,7 +587,7 @@ async def test_search_recipes_calls_upstream_and_parses(
             ]
         }
 
-    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    monkeypatch.setattr("cookidough_mcp.session._parse_json", _fake_parse_json)
 
     results = await session.search_recipes("tomate", limit=5)
 
@@ -635,7 +635,7 @@ async def test_search_recipes_drops_rows_without_title(
             ]
         }
 
-    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    monkeypatch.setattr("cookidough_mcp.session._parse_json", _fake_parse_json)
     results = await session.search_recipes("x")
     assert [r.id for r in results] == ["rid3"]
     # numberOfRatings sent as a float must still be accepted (some JSON
@@ -672,7 +672,7 @@ async def test_search_recipes_url_encodes_query_plus_sign(
     async def _fake_parse_json(_response: Any) -> Any:
         return {"data": []}
 
-    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    monkeypatch.setattr("cookidough_mcp.session._parse_json", _fake_parse_json)
     await session.search_recipes("A+B Sauce")
     # quote_plus encodes '+' as %2B and space as '+'.
     assert "query=A%2BB+Sauce" in captured["url"]
@@ -702,7 +702,7 @@ async def test_search_recipes_returns_empty_on_unexpected_payload(
     async def _fake_parse_json(_response: Any) -> Any:
         return {"meta": {}}  # missing "data"
 
-    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    monkeypatch.setattr("cookidough_mcp.session._parse_json", _fake_parse_json)
     assert await session.search_recipes("x") == []
 
 
@@ -731,7 +731,7 @@ async def test_search_recipes_clamps_limit(monkeypatch: pytest.MonkeyPatch, sett
     async def _fake_parse_json(_response: Any) -> Any:
         return {"data": []}
 
-    monkeypatch.setattr("cookidoo_mcp.session._parse_json", _fake_parse_json)
+    monkeypatch.setattr("cookidough_mcp.session._parse_json", _fake_parse_json)
     await session.search_recipes("x", limit=9999)
     assert "limit=50" in captured["url"]
 
@@ -749,7 +749,7 @@ async def test_suggest_recipes_skips_recipes_with_no_match(
     _mock_collections(fake, managed=[], custom=[collection])
 
     async def _details(_rid: str) -> Any:
-        from cookidoo_mcp.models import Ingredient, RecipeDetails
+        from cookidough_mcp.models import Ingredient, RecipeDetails
 
         return RecipeDetails(
             id="r1",
@@ -770,7 +770,7 @@ async def test_suggest_recipes_tolerates_individual_recipe_errors(
     _mock_collections(fake, managed=[], custom=[collection])
 
     async def _details(rid: str) -> Any:
-        from cookidoo_mcp.models import Ingredient, RecipeDetails
+        from cookidough_mcp.models import Ingredient, RecipeDetails
 
         if rid == "boom":
             # NotFoundError is expected for ID-look-up misses (e.g. a custom
@@ -845,7 +845,7 @@ async def test_suggest_recipes_drains_all_collection_pages(
     seen: list[str] = []
 
     async def _details(rid: str) -> Any:
-        from cookidoo_mcp.models import Ingredient, RecipeDetails
+        from cookidough_mcp.models import Ingredient, RecipeDetails
 
         seen.append(rid)
         return RecipeDetails(

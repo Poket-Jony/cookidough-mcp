@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from cookidoo_mcp.annotation_models import (
+from cookidough_mcp.annotation_models import (
     BlendModeAnnotation,
     BlendModeData,
     BrowningModeAnnotation,
@@ -14,8 +14,8 @@ from cookidoo_mcp.annotation_models import (
     IngredientAnnotationData,
     TemperatureData,
 )
-from cookidoo_mcp.models import CustomRecipeDraft, QualityIssueSeverity, RecipeStep
-from cookidoo_mcp.quality import (
+from cookidough_mcp.models import CustomRecipeDraft, QualityIssueSeverity, RecipeStep
+from cookidough_mcp.quality import (
     AccessoryRule,
     IngredientReferenceRule,
     ParallelizationRule,

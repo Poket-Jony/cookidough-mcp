@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import SecretStr
 
-from cookidoo_mcp.config import Settings
+from cookidough_mcp.config import Settings
 
 
 def _settings(*, country: str, language: str) -> Settings:

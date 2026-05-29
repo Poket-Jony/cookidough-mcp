@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from cookidoo_api.exceptions import CookidooAuthException, CookidooRequestException
 
-from cookidoo_mcp.annotation_models import (
+from cookidough_mcp.annotation_models import (
     BlendModeAnnotation,
     BlendModeData,
     BrowningModeAnnotation,
@@ -31,9 +31,9 @@ from cookidoo_mcp.annotation_models import (
     WarmUpModeAnnotation,
     WarmUpModeData,
 )
-from cookidoo_mcp.errors import AuthenticationError, NotFoundError, UpstreamApiError
-from cookidoo_mcp.models import CustomRecipeDraft, RecipeStep
-from cookidoo_mcp.session import (
+from cookidough_mcp.errors import AuthenticationError, NotFoundError, UpstreamApiError
+from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
+from cookidough_mcp.session import (
     CookidooSession,
     _calendar_to_dto,
     _collection_to_dto,
@@ -275,13 +275,13 @@ async def test_ensure_logged_in_translates_auth_exception(
     async def _options(country: str, language: str) -> list[Any]:
         return [_NS(country_code=country, language=language, url="https://x/x")]
 
-    monkeypatch.setattr("cookidoo_mcp.session.get_localization_options", _options)
+    monkeypatch.setattr("cookidough_mcp.session.get_localization_options", _options)
 
     class _BadClient:
         async def login(self) -> None:
             raise CookidooAuthException("invalid")
 
-    monkeypatch.setattr("cookidoo_mcp.session.Cookidoo", lambda **_: _BadClient())
+    monkeypatch.setattr("cookidough_mcp.session.Cookidoo", lambda **_: _BadClient())
 
     with pytest.raises(AuthenticationError):
         await session._ensure_logged_in()

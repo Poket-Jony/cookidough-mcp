@@ -6,8 +6,8 @@ from collections.abc import Callable
 
 import pytest
 
-from cookidoo_mcp.errors import WebImportError
-from cookidoo_mcp.web_import import WebRecipeImporter
+from cookidough_mcp.errors import WebImportError
+from cookidough_mcp.web_import import WebRecipeImporter
 
 
 class _FakeScraper:

@@ -1,6 +1,6 @@
-# Cookidoo MCP Server
+# Cookidough MCP Server
 
-[![CI](https://github.com/Poket-Jony/cookidoo-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Poket-Jony/cookidoo-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/Poket-Jony/cookidough-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Poket-Jony/cookidough-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-8A2BE2.svg)](https://modelcontextprotocol.io)
@@ -114,27 +114,27 @@ below.
 ## Requirements
 
 - Python **3.12 or newer**
-- A valid Cookidoo account (`COOKIDOO_EMAIL` / `COOKIDOO_PASSWORD`)
+- A valid Cookidoo account (`COOKIDOUGH_EMAIL` / `COOKIDOUGH_PASSWORD`)
 - Optional: [`uv`](https://docs.astral.sh/uv/) for the recommended client
   setup, or `pip` if you prefer
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/jonasplamann/cookidoo-mcp.git
-cd cookidoo-mcp
-cp .env.example .env          # fill in COOKIDOO_EMAIL / COOKIDOO_PASSWORD
+git clone https://github.com/Poket-Jony/cookidough-mcp.git
+cd cookidough-mcp
+cp .env.example .env          # fill in COOKIDOUGH_EMAIL / COOKIDOUGH_PASSWORD
 ./run.sh
 ```
 
 `run.sh` is idempotent: it detects Python 3.12+, creates `.venv/`, installs
 the project the first time around, loads `.env`, validates credentials, and
 starts the server. Subsequent runs skip the install step and start
-immediately. Any extra arguments are forwarded to `cookidoo-mcp`.
+immediately. Any extra arguments are forwarded to `cookidough-mcp`.
 
 ```bash
 ./run.sh --help                       # CLI help
-COOKIDOO_MCP_MODE=http ./run.sh       # start over HTTP instead of stdio
+COOKIDOUGH_MCP_MODE=http ./run.sh       # start over HTTP instead of stdio
 ```
 
 ## MCP client setup
@@ -150,10 +150,10 @@ Two ways to wire it up — pick one and add it to your MCP client config
 {
   "mcpServers": {
     "cookidoo": {
-      "command": "/absolute/path/to/cookidoo-mcp/run.sh",
+      "command": "/absolute/path/to/cookidough-mcp/run.sh",
       "env": {
-        "COOKIDOO_EMAIL": "you@example.com",
-        "COOKIDOO_PASSWORD": "..."
+        "COOKIDOUGH_EMAIL": "you@example.com",
+        "COOKIDOUGH_PASSWORD": "..."
       }
     }
   }
@@ -170,15 +170,15 @@ locally with `--from`):**
       "command": "uvx",
       "args": [
         "--from",
-        "/absolute/path/to/cookidoo-mcp",
-        "cookidoo-mcp"
+        "/absolute/path/to/cookidough-mcp",
+        "cookidough-mcp"
       ],
       "env": {
-        "COOKIDOO_EMAIL": "you@example.com",
-        "COOKIDOO_PASSWORD": "...",
-        "COOKIDOO_COUNTRY": "de",
-        "COOKIDOO_LANGUAGE": "de-DE",
-        "COOKIDOO_QUALITY_BAR": "70"
+        "COOKIDOUGH_EMAIL": "you@example.com",
+        "COOKIDOUGH_PASSWORD": "...",
+        "COOKIDOUGH_COUNTRY": "de",
+        "COOKIDOUGH_LANGUAGE": "de-DE",
+        "COOKIDOUGH_QUALITY_BAR": "70"
       }
     }
   }
@@ -201,19 +201,19 @@ The server is configured purely via environment variables (see
 
 | Variable                | Required | Default     | Description                                              |
 | ----------------------- | -------- | ----------- | -------------------------------------------------------- |
-| `COOKIDOO_EMAIL`        | yes      | -           | Cookidoo account email                                   |
-| `COOKIDOO_PASSWORD`     | yes      | -           | Cookidoo account password (stored in memory as `SecretStr`) |
-| `COOKIDOO_COUNTRY`      | no       | `de`        | ISO 3166-1 alpha-2 country code (case-insensitive)       |
-| `COOKIDOO_LANGUAGE`     | no       | `de`        | ISO 639-1 (`de`, paired with `COOKIDOO_COUNTRY`) or BCP-47 (`de-DE`); case-normalized to `lang-REGION` |
-| `COOKIDOO_MCP_MODE`     | no       | `stdio`     | Transport: `stdio` or `http`                             |
-| `COOKIDOO_MCP_HOST`     | no       | `127.0.0.1` | Bind host (HTTP only)                                    |
-| `COOKIDOO_MCP_PORT`     | no       | `8765`      | Bind port (HTTP only)                                    |
-| `COOKIDOO_QUALITY_BAR`  | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads |
+| `COOKIDOUGH_EMAIL`        | yes      | -           | Cookidoo account email                                   |
+| `COOKIDOUGH_PASSWORD`     | yes      | -           | Cookidoo account password (stored in memory as `SecretStr`) |
+| `COOKIDOUGH_COUNTRY`      | no       | `de`        | ISO 3166-1 alpha-2 country code (case-insensitive)       |
+| `COOKIDOUGH_LANGUAGE`     | no       | `de`        | ISO 639-1 (`de`, paired with `COOKIDOUGH_COUNTRY`) or BCP-47 (`de-DE`); case-normalized to `lang-REGION` |
+| `COOKIDOUGH_MCP_MODE`     | no       | `stdio`     | Transport: `stdio` or `http`                             |
+| `COOKIDOUGH_MCP_HOST`     | no       | `127.0.0.1` | Bind host (HTTP only)                                    |
+| `COOKIDOUGH_MCP_PORT`     | no       | `8765`      | Bind port (HTTP only)                                    |
+| `COOKIDOUGH_QUALITY_BAR`  | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads |
 
 ## Tool reference
 
 All tools are registered automatically on server start. Each tool returns
-a strongly typed Pydantic DTO (see [`src/cookidoo_mcp/models.py`](src/cookidoo_mcp/models.py)).
+a strongly typed Pydantic DTO (see [`src/cookidough_mcp/models.py`](src/cookidough_mcp/models.py)).
 
 ### Authentication & account
 
@@ -294,7 +294,7 @@ Both `upload_custom_recipe` and `import_web_recipe` score every draft against
 a small ruleset (time/speed annotations per cooking step, temperature/Varoma
 mode, accessory mentions, parallelization hints, ingredient/step linkage).
 
-- Default threshold: `COOKIDOO_QUALITY_BAR=70`
+- Default threshold: `COOKIDOUGH_QUALITY_BAR=70`
 - `upload_custom_recipe` raises `QualityGateError` when below threshold —
   the LLM submitted the draft itself, a hard error is the right signal.
 - `import_web_recipe` **never** raises on quality; it always returns a
@@ -476,9 +476,9 @@ umlauts). Two ways to populate them:
 For remote clients or web-based MCP integrations:
 
 ```bash
-COOKIDOO_MCP_MODE=http \
-COOKIDOO_MCP_HOST=0.0.0.0 \
-COOKIDOO_MCP_PORT=8765 \
+COOKIDOUGH_MCP_MODE=http \
+COOKIDOUGH_MCP_HOST=0.0.0.0 \
+COOKIDOUGH_MCP_PORT=8765 \
 ./run.sh
 ```
 
@@ -490,8 +490,8 @@ host/port.
 Manual environment (without `run.sh`):
 
 ```bash
-git clone https://github.com/jonasplamann/cookidoo-mcp.git
-cd cookidoo-mcp
+git clone https://github.com/Poket-Jony/cookidough-mcp.git
+cd cookidough-mcp
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"      # or: pip install -e ".[dev]"
 ```
@@ -535,7 +535,7 @@ documented in [`AGENTS.md`](AGENTS.md) — read it before contributing.
 ## Architecture
 
 ```
-src/cookidoo_mcp/
+src/cookidough_mcp/
 ├── config.py        # Pydantic-settings, env-driven Settings
 ├── constants.py     # Timeouts and other shared constants
 ├── context.py       # AppContext + ToolContext type alias
@@ -557,7 +557,7 @@ the upstream client only touches one file.
 
 ## Troubleshooting
 
-**`Missing required environment variable(s): COOKIDOO_EMAIL`**
+**`Missing required environment variable(s): COOKIDOUGH_EMAIL`**
 Copy `.env.example` to `.env` and fill in your credentials, or set the
 variables in your MCP client config.
 
@@ -566,11 +566,11 @@ Install Python 3.12+ (macOS: `brew install python@3.12`; Debian/Ubuntu:
 `apt install python3.12`) and re-run `./run.sh`.
 
 **HTTP port already in use**
-Set a different port: `COOKIDOO_MCP_PORT=9000 ./run.sh`.
+Set a different port: `COOKIDOUGH_MCP_PORT=9000 ./run.sh`.
 
 **Custom recipe upload blocked by quality gate**
 Either improve the draft (add Thermomix guided-cooking annotations such as
-`5 min / 100 °C / speed 3` to each step), lower `COOKIDOO_QUALITY_BAR`, or
+`5 min / 100 °C / speed 3` to each step), lower `COOKIDOUGH_QUALITY_BAR`, or
 re-issue the call with `force=true` after the user accepts the trade-off.
 
 **Stdio client sees corrupted JSON-RPC frames**

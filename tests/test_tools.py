@@ -9,15 +9,15 @@ from unittest.mock import AsyncMock
 import pytest
 from mcp.server.fastmcp import FastMCP
 
-from cookidoo_mcp.context import AppContext
-from cookidoo_mcp.errors import QualityGateError
-from cookidoo_mcp.models import (
+from cookidough_mcp.context import AppContext
+from cookidough_mcp.errors import QualityGateError
+from cookidough_mcp.models import (
     AdditionalItemRename,
     CustomRecipeDraft,
     RecipeStep,
     ShoppingItemOwnershipUpdate,
 )
-from cookidoo_mcp.tools import register_all
+from cookidough_mcp.tools import register_all
 
 from ._mcp_internals import get_tool_fn as _tool_fn
 

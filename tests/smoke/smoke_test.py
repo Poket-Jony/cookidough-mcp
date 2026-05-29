@@ -8,9 +8,9 @@ dispatch + tool adapter + session + cookidoo-api stack.
 Credentials are loaded from a file **outside** the repository tree so they
 can never leak into git history. The lookup order is:
 
-1. ``$COOKIDOO_SMOKE_ENV_FILE`` if set.
-2. ``$XDG_CONFIG_HOME/cookidoo-mcp/smoke.env``, else
-3. ``~/.config/cookidoo-mcp/smoke.env``.
+1. ``$COOKIDOUGH_SMOKE_ENV_FILE`` if set.
+2. ``$XDG_CONFIG_HOME/cookidough-mcp/smoke.env``, else
+3. ``~/.config/cookidough-mcp/smoke.env``.
 
 The file follows the same ``KEY=value`` format as ``.env.example``. The
 values are then passed to the server via the subprocess environment — the
@@ -56,26 +56,26 @@ REPO = Path(__file__).resolve().parents[2]
 def _resolve_smoke_env_path() -> Path:
     """Resolve the path to the smoke-test credentials file.
 
-    Precedence: ``COOKIDOO_SMOKE_ENV_FILE`` env var, else
-    ``$XDG_CONFIG_HOME/cookidoo-mcp/smoke.env``, else
-    ``~/.config/cookidoo-mcp/smoke.env``. The file lives **outside** the
+    Precedence: ``COOKIDOUGH_SMOKE_ENV_FILE`` env var, else
+    ``$XDG_CONFIG_HOME/cookidough-mcp/smoke.env``, else
+    ``~/.config/cookidough-mcp/smoke.env``. The file lives **outside** the
     repository so credentials cannot accidentally be committed.
     """
-    override = os.environ.get("COOKIDOO_SMOKE_ENV_FILE")
+    override = os.environ.get("COOKIDOUGH_SMOKE_ENV_FILE")
     if override:
         return Path(override).expanduser()
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg).expanduser() if xdg else Path.home() / ".config"
-    return base / "cookidoo-mcp" / "smoke.env"
+    return base / "cookidough-mcp" / "smoke.env"
 
 
 def _load_env_test(path: Path) -> dict[str, str]:
     if not path.exists():
         print(
             f"smoke test requires credentials at {path}.\n"
-            f"  Create the file with COOKIDOO_EMAIL / COOKIDOO_PASSWORD (see "
+            f"  Create the file with COOKIDOUGH_EMAIL / COOKIDOUGH_PASSWORD (see "
             f"{REPO / '.env.example'} for the full format), or override the "
-            f"location via the COOKIDOO_SMOKE_ENV_FILE environment variable.",
+            f"location via the COOKIDOUGH_SMOKE_ENV_FILE environment variable.",
             file=sys.stderr,
             flush=True,
         )
@@ -110,10 +110,10 @@ from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
 
 MARKER = uuid.uuid4().hex[:8]
-COLLECTION_NAME = f"[SMOKE_TEST cookidoo-mcp] {MARKER}"
-ITEM_NAME = f"[SMOKE_TEST cookidoo-mcp] item {MARKER}"
-SENTINEL_ITEM_NAME = f"[SMOKE_TEST cookidoo-mcp] clear-sentinel {MARKER}"
-RECIPE_NAME = f"[SMOKE_TEST cookidoo-mcp] recipe {MARKER}"
+COLLECTION_NAME = f"[SMOKE_TEST cookidough-mcp] {MARKER}"
+ITEM_NAME = f"[SMOKE_TEST cookidough-mcp] item {MARKER}"
+SENTINEL_ITEM_NAME = f"[SMOKE_TEST cookidough-mcp] clear-sentinel {MARKER}"
+RECIPE_NAME = f"[SMOKE_TEST cookidough-mcp] recipe {MARKER}"
 FUTURE_TEST_DAY = "2099-01-01"
 
 # Stable Cookidoo catalogue managed collection used by the add/remove roundtrip.
@@ -219,7 +219,7 @@ async def main() -> int:
     _refuse_if_dotenv_would_override(REPO)
     test_env = _load_env_test(_resolve_smoke_env_path())
     # Inherit PATH, HOME, LANG etc. from our shell; layer .env.test on top so
-    # the COOKIDOO_* credentials are available to run.sh's assert_credentials.
+    # the COOKIDOUGH_* credentials are available to run.sh's assert_credentials.
     server_env: dict[str, str] = {**os.environ, **test_env}
 
     server_params = StdioServerParameters(
@@ -552,7 +552,7 @@ async def main() -> int:
                 # the explicit ``remove_additional_items`` cleanup still
                 # see the item under ``ITEM_NAME``.
                 if created_item_ids:
-                    renamed_name = f"[SMOKE_TEST cookidoo-mcp] renamed {MARKER}"
+                    renamed_name = f"[SMOKE_TEST cookidough-mcp] renamed {MARKER}"
                     try:
                         renamed = await _call(
                             mcp,

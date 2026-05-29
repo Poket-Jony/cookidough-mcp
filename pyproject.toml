@@ -3,43 +3,15 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "cookidoo-mcp"
+name = "cookidough-mcp"
 version = "0.1.0"
-description = "Model Context Protocol server for the Thermomix Cookidoo platform"
+description = "An unofficial Model Context Protocol (MCP) server for the Thermomix® Cookidoo® platform"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Jonas Plamann" }]
-keywords = [
-    "mcp",
-    "model-context-protocol",
-    "cookidoo",
-    "thermomix",
-    "tm7",
-    "recipe",
-    "meal-planning",
-    "llm",
-    "claude",
-    "anthropic",
-]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "Intended Audience :: End Users/Desktop",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Internet :: WWW/HTTP",
-    "Typing :: Typed",
-]
 dependencies = [
     "mcp[cli]>=1.2",
-    # ``cookidoo-api`` 0.17.1 ships the browser OAuth2 cookie flow that the
-    # Cookidoo web app uses. Earlier releases still relied on the
-    # ``grant_type=password`` flow that Vorwerk retired in May 2026.
     "cookidoo-api>=0.17.1",
     "aiohttp>=3.9",
     "pydantic>=2.7",
@@ -57,15 +29,15 @@ dev = [
 ]
 
 [project.scripts]
-cookidoo-mcp = "cookidoo_mcp.__main__:main"
+cookidough-mcp = "cookidough_mcp.__main__:main"
 
 [project.urls]
-Repository = "https://github.com/jonasplamann/cookidoo-mcp"
-Issues = "https://github.com/jonasplamann/cookidoo-mcp/issues"
-Documentation = "https://github.com/jonasplamann/cookidoo-mcp#readme"
+Repository = "https://github.com/Poket-Jony/cookidough-mcp"
+Issues = "https://github.com/Poket-Jony/cookidough-mcp/issues"
+Documentation = "https://github.com/Poket-Jony/cookidough-mcp#readme"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cookidoo_mcp"]
+packages = ["src/cookidough_mcp"]
 
 [tool.ruff]
 line-length = 100
@@ -123,10 +95,10 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # FastMCP's @mcp.tool() decorator is untyped; we accept that locally rather
 # than across the whole codebase.
-module = ["cookidoo_mcp.tools.*"]
+module = ["cookidough_mcp.tools.*"]
 disallow_untyped_decorators = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "-ra --strict-markers --cov=cookidoo_mcp --cov-report=term-missing --cov-fail-under=80"
+addopts = "-ra --strict-markers --cov=cookidough_mcp --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]

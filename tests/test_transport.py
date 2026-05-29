@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import SecretStr
 
-from cookidoo_mcp.config import Settings, TransportMode
-from cookidoo_mcp.transport import (
+from cookidough_mcp.config import Settings, TransportMode
+from cookidough_mcp.transport import (
     HttpTransport,
     StdioTransport,
     transport_from_settings,

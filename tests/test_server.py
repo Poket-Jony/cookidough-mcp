@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from cookidoo_mcp.config import Settings
-from cookidoo_mcp.server import build_server
+from cookidough_mcp.config import Settings
+from cookidough_mcp.server import build_server
 
 _EXPECTED_TOOL_NAMES = frozenset(
     {

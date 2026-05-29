@@ -7,7 +7,7 @@ here.
 
 ## Project overview
 
-`cookidoo-mcp` is a Model Context Protocol (MCP) server that exposes the
+`cookidough-mcp` is a Model Context Protocol (MCP) server that exposes the
 Thermomix [Cookidoo](https://cookidoo.de) platform to LLM clients (Claude
 Desktop, Claude Code, any MCP-aware tool). It consolidates four predecessor
 projects into a single Python 3.12 codebase built on **FastMCP** and the
@@ -18,13 +18,13 @@ The full feature list and tool table is in [`README.md`](README.md).
 ## Setup commands
 
 ```bash
-cp .env.example .env  # fill in COOKIDOO_EMAIL / COOKIDOO_PASSWORD
+cp .env.example .env  # fill in COOKIDOUGH_EMAIL / COOKIDOUGH_PASSWORD
 ./run.sh              # idempotent: bootstrap venv + install + start server
 ```
 
 `run.sh` skips the install step when `pyproject.toml` has not changed since
 the last successful install, so subsequent runs start immediately. Any extra
-arguments are forwarded to `cookidoo-mcp`.
+arguments are forwarded to `cookidough-mcp`.
 
 Manual setup (without `run.sh`) is documented in `README.md` under the
 "Development" section.
@@ -71,7 +71,7 @@ errors block the build.
 - **Docstrings**: Only on public modules, classes, and tool functions. Tool
   docstrings are surfaced to the LLM client, so keep them short, precise, and
   outcome-focused.
-- **Imports**: Inside `src/cookidoo_mcp/tools/*` relative imports from the
+- **Imports**: Inside `src/cookidough_mcp/tools/*` relative imports from the
   parent package (`from ..context import ...`) are intentional and ignored
   by ruff's TID rule via per-file config.
 
@@ -97,7 +97,7 @@ errors block the build.
 ## Architecture
 
 ```
-src/cookidoo_mcp/
+src/cookidough_mcp/
 ├── config.py        # Pydantic-settings, env-driven Settings
 ├── constants.py     # Magic numbers / strings (timeouts, defaults)
 ├── context.py       # AppContext dataclass + ToolContext type alias
@@ -161,9 +161,9 @@ src/cookidoo_mcp/
 - `./run.sh` is the canonical entry point. It is idempotent, detects
   Python 3.12+, creates `.venv/`, installs the package, sources `.env`,
   validates credentials, and `exec`s the server.
-- For HTTP transport: `COOKIDOO_MCP_MODE=http ./run.sh`.
+- For HTTP transport: `COOKIDOUGH_MCP_MODE=http ./run.sh`.
 - For local development without the script:
-  `source .venv/bin/activate && cookidoo-mcp`.
+  `source .venv/bin/activate && cookidough-mcp`.
 - The MCP Inspector is the fastest way to smoke-test tool changes:
 
   ```bash

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     """Server configuration."""
 
     model_config = SettingsConfigDict(
-        env_prefix="COOKIDOO_",
+        env_prefix="COOKIDOUGH_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
