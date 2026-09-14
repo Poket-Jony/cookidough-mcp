@@ -260,6 +260,32 @@ triggers one login anyway.
 > any repository (the bundled `.gitignore` excludes `token.json` /
 > `*.token.json`) and treat it like a password.
 
+### Mainland China
+
+China runs a separate Cookidoo deployment (`cookidoo.com.cn`) behind its own
+identity provider, with a phone number instead of an email address:
+
+```bash
+COOKIDOUGH_EMAIL=13800000000     # the account phone number
+COOKIDOUGH_COUNTRY=cn
+COOKIDOUGH_LANGUAGE=zh-Hans-CN
+```
+
+The server then logs in through the China CIAM and talks to the mainland
+hosts. Custom-recipe updates use the Chinese web editor's granular PATCH
+schema, and recipe images go through Tencent COS plus Cookidoo's moderation
+queue instead of Cloudinary. That upload path needs an optional dependency:
+
+```bash
+pip install 'cookidough-mcp[china]'
+```
+
+Without it every other tool still works; only `set_custom_recipe_image`
+fails, with a message naming the extra.
+
+> This path is contributed and has not been verified against a live mainland
+> account by the maintainers. Please report anything that misbehaves.
+
 ## Tool reference
 
 All tools are registered automatically on server start. Each tool returns
@@ -631,6 +657,7 @@ src/cookidough_mcp/
 ├── models.py            # Pydantic DTOs for every tool I/O
 ├── annotation_models.py # Guided-cooking annotation DTOs (discriminated union)
 ├── session.py           # Repository facade over cookidoo-api + custom HTTP
+├── china_client.py      # Cookidoo client for the mainland-China deployment
 ├── transport.py         # Stdio / HTTP transport strategies
 ├── quality.py           # Thermomix recipe quality rule strategies
 ├── annotations.py       # Annotation inferrer (text patterns → StepAnnotation)

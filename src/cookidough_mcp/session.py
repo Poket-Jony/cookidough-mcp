@@ -39,6 +39,7 @@ from cookidoo_api.exceptions import (
 
 from .annotation_models import StepAnnotation
 from .annotations import AnnotationInferrer
+from .china_client import CHINA_LOCALIZATION, ChinaCookidoo
 from .constants import (
     CLOUDINARY_API_KEY,
     CLOUDINARY_UPLOAD_PRESET,
@@ -288,13 +289,19 @@ class CookidoughSession:
             if self._client is not None:
                 return self._client
 
-            options = await get_localization_options(country=self._settings.country_code)
-            localization = _match_localization(options, self._settings.language_code)
-            if localization is None:
-                raise AuthenticationError(
-                    f"No Cookidoo locale matches country={self._settings.country_code!r} "
-                    f"language={self._settings.language_code!r}."
-                )
+            # China is absent from the global locale catalogue; its deployment
+            # is fixed to one country/language pair.
+            if self._settings.is_china_market:
+                localization = CHINA_LOCALIZATION
+            else:
+                options = await get_localization_options(country=self._settings.country_code)
+                matched = _match_localization(options, self._settings.language_code)
+                if matched is None:
+                    raise AuthenticationError(
+                        f"No Cookidoo locale matches country={self._settings.country_code!r} "
+                        f"language={self._settings.language_code!r}."
+                    )
+                localization = matched
 
             # ``CookieJar(unsafe=True)`` is required because the browser
             # OAuth2 login chain crosses domains (``cookidoo.<tld>`` → CIAM
@@ -307,12 +314,7 @@ class CookidoughSession:
                 timeout=ClientTimeout(total=HTTP_TIMEOUT_SECONDS),
             )
             try:
-                config = CookidooConfig(
-                    email=self._settings.email,
-                    password=self._settings.password.get_secret_value(),
-                    localization=localization,
-                )
-                client = Cookidoo(session=http, cfg=config)
+                client = self._build_client(http, localization)
                 if self._try_load_token(client):
                     # Restoring tokens sets the Bearer header but leaves the
                     # cookie jar empty, so the ``_authed_http`` endpoints 401
@@ -371,6 +373,21 @@ class CookidoughSession:
             self._persist_token(client)
             self._session_generation += 1
             return client
+
+    def _build_client(
+        self, http: ClientSession, localization: CookidooLocalizationConfig
+    ) -> Cookidoo:
+        password = self._settings.password.get_secret_value()
+        if self._settings.is_china_market:
+            return ChinaCookidoo(session=http, phone_number=self._settings.email, password=password)
+        return Cookidoo(
+            session=http,
+            cfg=CookidooConfig(
+                email=self._settings.email,
+                password=password,
+                localization=localization,
+            ),
+        )
 
     def _try_load_token(self, client: Cookidoo) -> bool:
         """Restore the OAuth2 tokens from disk; True when a login was restored."""
@@ -1109,28 +1126,48 @@ class CookidoughSession:
     ) -> CustomRecipeImageResult:
         """Upload a photo for a custom recipe (path or http(s) URL).
 
-        Flow verified live (2026-06-05): Cookidoo signs the upload params,
-        the file goes directly to Vorwerk's Cloudinary tenant, and the
+        Global flow verified live (2026-06-05): Cookidoo signs the upload
+        params, the file goes directly to Vorwerk's Cloudinary tenant, and the
         returned public id is PATCHed onto the recipe. Each upload yields a
-        fresh asset — Cookidoo rejects reusing an asset across recipes.
+        fresh asset — Cookidoo rejects reusing an asset across recipes. China
+        instead uploads to Tencent COS and waits for moderation.
         """
         image_bytes, content_type = await self._load_image_bytes(image_source)
-        timestamp = int(time.time())
-        signature = await self._request_image_signature(timestamp)
-        public_id, image_format = await _upload_image_to_cloudinary(
-            image_bytes, content_type, timestamp, signature
-        )
+        client = await self._ensure_logged_in()
+        if isinstance(client, ChinaCookidoo):
+            body = await self._china_image_body(client, image_bytes, content_type)
+        else:
+            body = await self._cloudinary_image_body(image_bytes, content_type)
         url = f"{await self._custom_recipes_url()}/{quote(recipe_id, safe='')}"
-        body = {"image": f"{public_id}.{image_format}", "isImageOwnedByUser": True}
         async with self._authed_http("PATCH", url, json_body=body) as response:
             await response.read()
         details = await self.get_custom_recipe_details(recipe_id)
+        if isinstance(client, ChinaCookidoo) and str(body["image"]) not in (details.image or ""):
+            raise UpstreamApiError("China Cookidoo did not persist the uploaded recipe image.")
         return CustomRecipeImageResult(
             recipe_id=recipe_id,
             image=details.image,
             thumbnail=details.thumbnail,
             url=details.url,
         )
+
+    async def _cloudinary_image_body(self, image_bytes: bytes, content_type: str) -> dict[str, Any]:
+        timestamp = int(time.time())
+        signature = await self._request_image_signature(timestamp)
+        public_id, image_format = await _upload_image_to_cloudinary(
+            image_bytes, content_type, timestamp, signature
+        )
+        return {"image": f"{public_id}.{image_format}", "isImageOwnedByUser": True}
+
+    async def _china_image_body(
+        self, client: ChinaCookidoo, image_bytes: bytes, content_type: str
+    ) -> dict[str, Any]:
+        image_id = await client.upload_recipe_image(image_bytes, content_type)
+        return {
+            "image": image_id,
+            "isImageOwnedByUser": True,
+            "isImageCopyrightOwned": True,
+        }
 
     async def _request_image_signature(self, timestamp: int) -> str:
         client = await self._ensure_logged_in()
@@ -1182,6 +1219,8 @@ class CookidoughSession:
     async def _patch_custom_recipe(self, recipe_id: str, draft: CustomRecipeDraft) -> None:
         url = f"{await self._custom_recipes_url()}/{recipe_id}"
         payload = _draft_to_payload(draft)
+        if self._settings.is_china_market:
+            payload = ChinaCookidoo.update_payload(payload)
         async with self._authed_http("PATCH", url, json_body=payload) as response:
             # Drain the body so the connection can be safely returned to the
             # keep-alive pool. The PATCH response itself is not consumed.
@@ -1371,6 +1410,8 @@ class CookidoughSession:
             headers = {"Accept": "application/json"}
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
+            if self._settings.is_china_market:
+                headers["X-Requested-With"] = "xmlhttprequest"
             return await http.request(
                 method,
                 url,

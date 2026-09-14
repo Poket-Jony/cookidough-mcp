@@ -105,6 +105,7 @@ src/cookidough_mcp/
 ├── errors.py        # Domain exception hierarchy
 ├── models.py        # Pydantic DTOs for every tool I/O
 ├── session.py       # Repository facade over cookidoo-api + custom HTTP
+├── china_client.py  # Cookidoo client for the mainland-China deployment
 ├── transport.py     # Stdio / HTTP transport strategies
 ├── quality.py            # Thermomix recipe quality rule strategy set
 ├── annotation_models.py  # Guided-cooking annotation DTOs (discriminated union)
@@ -117,8 +118,15 @@ src/cookidough_mcp/
 
 **Key invariants** — do not break these without discussion:
 
-- `session.py` is the **only** module that imports from `cookidoo_api`.
-  Tools always go through the `CookidoughSessionProtocol` interface.
+- `session.py` and `china_client.py` are the **only** modules that import from
+  `cookidoo_api`. Tools always go through the `CookidoughSessionProtocol`
+  interface. `china_client.py` is exempt because it subclasses the upstream
+  client; keep every other module free of that import.
+- `ChinaCookidoo` overrides only the four CIAM-specific steps (discovery,
+  origin guard, login form, credential POST) and reuses the base class for
+  PKCE, the code exchange and token storage. It must end a login with real
+  tokens: `_ensure_token` gates all 42 `cookidoo-api` methods, so a
+  cookie-only login would break every one of them.
 - Tool modules in `tools/` are **thin adapters**. Business logic lives in
   `session.py`, `quality.py`, or `web_import.py`. A tool function should
   read like: validate → call session → return DTO.

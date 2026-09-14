@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import stat
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import pytest
 from cookidoo_api import Cookidoo, CookidooLocalizationConfig
@@ -39,6 +39,7 @@ from cookidough_mcp.annotation_models import (
     WarmUpModeAnnotation,
     WarmUpModeData,
 )
+from cookidough_mcp.china_client import CHINA_LOCALIZATION, ChinaCookidoo
 from cookidough_mcp.config import Settings
 from cookidough_mcp.errors import AuthenticationError, NotFoundError, UpstreamApiError
 from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
@@ -341,6 +342,136 @@ def test_match_localization_returns_none_when_language_is_absent(
     published: list[str], wanted: str
 ) -> None:
     assert _match_localization([_locale(tag) for tag in published], wanted) is None
+
+
+def _china_settings() -> Settings:
+    return Settings(
+        email="13800000000",
+        password=SecretStr("pw"),
+        country="cn",
+        language="zh-Hans-CN",
+    )
+
+
+def test_build_client_selects_the_china_adapter_for_cn() -> None:
+    session = CookidoughSession(_china_settings())
+    client = session._build_client(cast(Any, object()), CHINA_LOCALIZATION)
+    assert isinstance(client, ChinaCookidoo)
+    assert client.localization.url.startswith("https://cookidoo.com.cn")
+
+
+def test_build_client_keeps_the_global_client_elsewhere(settings: Any) -> None:
+    session = CookidoughSession(settings)
+    localization = CookidooLocalizationConfig(
+        country_code="de", language="de-DE", url="https://cookidoo.de"
+    )
+    client = session._build_client(cast(Any, object()), localization)
+    assert not isinstance(client, ChinaCookidoo)
+    assert client.localization.language == "de-DE"
+
+
+async def test_ensure_logged_in_skips_the_locale_catalogue_for_china(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """China is absent from the global catalogue, so looking it up would fail."""
+    session = CookidoughSession(_china_settings())
+
+    async def _explode(country: str) -> list[Any]:
+        raise AssertionError("China must not query the global locale catalogue")
+
+    monkeypatch.setattr("cookidough_mcp.session.get_localization_options", _explode)
+
+    class _OkClient:
+        localization = CHINA_LOCALIZATION
+
+        async def login(self) -> None:
+            return None
+
+    monkeypatch.setattr(session, "_build_client", lambda *_: _OkClient())
+
+    try:
+        await session._ensure_logged_in()
+    finally:
+        await session.aclose()
+
+
+@pytest.mark.parametrize(
+    ("settings_factory", "expects_china_shape"),
+    [(_china_settings, True), (None, False)],
+)
+async def test_patch_custom_recipe_maps_the_body_for_china(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Any,
+    settings_factory: Any,
+    expects_china_shape: bool,
+) -> None:
+    from contextlib import asynccontextmanager
+
+    resolved = settings_factory() if settings_factory else settings
+    session = CookidoughSession(resolved)
+    bodies: list[Any] = []
+
+    @asynccontextmanager
+    async def _fake_authed_http(method: str, url: str, json_body: Any = None) -> Any:
+        bodies.append(json_body)
+        yield _NS(read=_empty_read)
+
+    monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
+    monkeypatch.setattr(session, "_custom_recipes_url", _custom_recipes_url)
+
+    await session._patch_custom_recipe(
+        "cr1",
+        CustomRecipeDraft(
+            name="Rice", ingredients=["300 g rice"], steps=[RecipeStep(text="Blend")]
+        ),
+    )
+
+    # The China editor accepts exactly these six fields; the global body is wider.
+    china_fields = {"name", "tools", "yield", "ingredients", "instructions", "recipeMetadata"}
+    assert (set(bodies[0]) == china_fields) is expects_china_shape
+
+
+async def _empty_read() -> bytes:
+    return b""
+
+
+async def _custom_recipes_url() -> str:
+    return "https://cookidoo.example/created-recipes/xx"
+
+
+class _HeaderCapturingHttp:
+    def __init__(self) -> None:
+        self.headers: dict[str, str] = {}
+
+    async def request(self, method: str, url: str, **kwargs: Any) -> Any:
+        self.headers = dict(kwargs["headers"])
+        return _NS(status=200, release=lambda: None)
+
+
+@pytest.mark.parametrize(
+    ("settings_factory", "expected"),
+    [(_china_settings, "xmlhttprequest"), (None, None)],
+)
+async def test_authed_http_sends_the_china_header_only_for_cn(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Any,
+    settings_factory: Any,
+    expected: str | None,
+) -> None:
+    resolved = settings_factory() if settings_factory else settings
+    session = CookidoughSession(resolved)
+    http = _HeaderCapturingHttp()
+    session._http = cast(Any, http)
+
+    async def _login() -> Any:
+        return object()
+
+    monkeypatch.setattr(session, "_ensure_logged_in", _login)
+
+    async with session._authed_http("GET", "https://cookidoo.example/x"):
+        pass
+
+    assert http.headers.get("X-Requested-With") == expected
 
 
 async def test_ensure_logged_in_raises_when_no_locale_matches(

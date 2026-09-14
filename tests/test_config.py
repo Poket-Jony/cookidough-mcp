@@ -46,3 +46,9 @@ def test_token_file_parses_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = _settings(country="de", language="de")
     assert settings.token_file is not None
     assert settings.token_file.name == "cookidoo-token.json"
+
+
+def test_is_china_market_tracks_the_country_code() -> None:
+    assert _settings(country="cn", language="zh-Hans-CN").is_china_market is True
+    assert _settings(country="CN", language="zh-Hans-CN").is_china_market is True
+    assert _settings(country="de", language="de").is_china_market is False

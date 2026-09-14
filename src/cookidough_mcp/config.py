@@ -7,6 +7,8 @@ from typing import Annotated, Self
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .constants import CHINA_COUNTRY_CODE
+
 
 class TransportMode(StrEnum):
     """Supported MCP transports."""
@@ -25,7 +27,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    email: str = Field(min_length=3, description="Cookidoo account email.")
+    email: str = Field(
+        min_length=3,
+        description="Cookidoo account email, or a phone number when country='cn'.",
+    )
     password: SecretStr = Field(description="Cookidoo account password.")
     country: str = Field(
         default="de",
@@ -70,6 +75,11 @@ class Settings(BaseSettings):
     @property
     def country_code(self) -> str:
         return self.country.lower()
+
+    @property
+    def is_china_market(self) -> bool:
+        """Whether this account lives on Cookidoo's separate China deployment."""
+        return self.country_code == CHINA_COUNTRY_CODE
 
     @property
     def language_code(self) -> str:

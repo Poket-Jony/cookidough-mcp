@@ -23,6 +23,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Only the China recipe-image upload needs this; everything else works without it.
+china = ["cos-python-sdk-v5>=1.9"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
@@ -92,7 +94,7 @@ warn_redundant_casts = true
 files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["cookidoo_api.*", "recipe_scrapers.*"]
+module = ["cookidoo_api.*", "qcloud_cos.*", "recipe_scrapers.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

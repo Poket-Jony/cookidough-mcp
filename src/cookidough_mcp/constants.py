@@ -74,3 +74,17 @@ CLOUDINARY_API_KEY: Final[str] = "993585863591145"
 # Upload cap for recipe images. Cookidoo's own web client accepts photos in
 # this range; the moderation pipeline additionally requires >=80px per side.
 MAX_RECIPE_IMAGE_BYTES: Final[int] = 10 * 1024 * 1024
+
+# Mainland China runs a separate deployment behind its own identity provider,
+# so none of the global hosts resolve for it. Selected by COOKIDOUGH_COUNTRY=cn.
+CHINA_COUNTRY_CODE: Final[str] = "cn"
+CHINA_LANGUAGE_CODE: Final[str] = "zh-Hans-CN"
+CHINA_COOKIDOO_ORIGIN: Final[str] = "https://cookidoo.com.cn"
+CHINA_CIAM_BASE_URL: Final[str] = "https://ciam.production-cn.cookidoo.tmecosys.cn"
+CHINA_OIDC_DISCOVERY_URL: Final[str] = f"{CHINA_CIAM_BASE_URL}/.well-known/openid-configuration"
+
+# China moderates recipe images asynchronously; 60 s total covers the queue's
+# typical 20-40 s without hanging the tool call.
+CHINA_IMAGE_AUDIT_POLL_ATTEMPTS: Final[int] = 30
+CHINA_IMAGE_AUDIT_POLL_INTERVAL_SECONDS: Final[float] = 2.0
+CHINA_COS_TIMEOUT_SECONDS: Final[int] = 120
