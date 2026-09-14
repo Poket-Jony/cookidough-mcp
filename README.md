@@ -30,7 +30,7 @@ recipes, manage shopping lists and meal plans, and upload custom recipes.
   user's own collections
 - Recipe interactions: rate, bookmark, personal notes, cooked-history
 - Calendar→shopping-list in one call, personalized recommendations,
-  nutrition data, and optional cookie persistence across restarts
+  nutrition data, and optional token persistence across restarts
 
 ## Table of contents
 
@@ -63,8 +63,8 @@ below.
 - Read the user profile and active subscription, including subscription
   level, type, and expiry; optionally include the Thermomix devices and
   accessories linked to the account (`include_devices=true`).
-- Optional cookie persistence (`COOKIDOUGH_COOKIES_FILE`): valid session
-  cookies survive a server restart and skip the OAuth2 login round-trip.
+- Optional token persistence (`COOKIDOUGH_TOKEN_FILE`): the OAuth2 tokens
+  survive a server restart and skip the login for the `cookidoo-api` paths.
 
 ### Recipe lookup, creation & import
 
@@ -236,23 +236,29 @@ interactively.
 The server is configured purely via environment variables (see
 [`.env.example`](.env.example)):
 
-| Variable                | Required | Default     | Description                                              |
-| ----------------------- | -------- | ----------- | -------------------------------------------------------- |
-| `COOKIDOUGH_EMAIL`        | yes      | -           | Cookidoo account email                                   |
-| `COOKIDOUGH_PASSWORD`     | yes      | -           | Cookidoo account password (stored in memory as `SecretStr`) |
-| `COOKIDOUGH_COUNTRY`      | no       | `de`        | ISO 3166-1 alpha-2 country code (case-insensitive)       |
-| `COOKIDOUGH_LANGUAGE`     | no       | `de`        | ISO 639-1 (`de`, paired with `COOKIDOUGH_COUNTRY`) or BCP-47 (`de-DE`); case-normalized to `lang-REGION` |
-| `COOKIDOUGH_MCP_MODE`     | no       | `stdio`     | Transport: `stdio` or `http`                             |
-| `COOKIDOUGH_MCP_HOST`     | no       | `127.0.0.1` | Bind host (HTTP only)                                    |
-| `COOKIDOUGH_MCP_PORT`     | no       | `8765`      | Bind port (HTTP only)                                    |
-| `COOKIDOUGH_QUALITY_BAR`  | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads |
-| `COOKIDOUGH_COOKIES_FILE` | no       | -           | Optional path for persisting session cookies across restarts (skips the OAuth2 login while they are valid) |
+| Variable                 | Required | Default     | Description                                                                                                       |
+|--------------------------|----------|-------------|-------------------------------------------------------------------------------------------------------------------|
+| `COOKIDOUGH_EMAIL`       | yes      | -           | Cookidoo account email                                                                                            |
+| `COOKIDOUGH_PASSWORD`    | yes      | -           | Cookidoo account password (stored in memory as `SecretStr`)                                                       |
+| `COOKIDOUGH_COUNTRY`     | no       | `de`        | ISO 3166-1 alpha-2 country code (case-insensitive)                                                                |
+| `COOKIDOUGH_LANGUAGE`    | no       | `de`        | ISO 639-1 (`de`, paired with `COOKIDOUGH_COUNTRY`) or BCP-47 (`de-DE`); case-normalized to `lang-REGION`          |
+| `COOKIDOUGH_MCP_MODE`    | no       | `stdio`     | Transport: `stdio` or `http`                                                                                      |
+| `COOKIDOUGH_MCP_HOST`    | no       | `127.0.0.1` | Bind host (HTTP only)                                                                                             |
+| `COOKIDOUGH_MCP_PORT`    | no       | `8765`      | Bind port (HTTP only)                                                                                             |
+| `COOKIDOUGH_QUALITY_BAR` | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads                                                 |
+| `COOKIDOUGH_TOKEN_FILE`  | no       | -           | Optional path for persisting the OAuth2 tokens across restarts (skips the login while the refresh token is valid) |
 
-> **Security note on `COOKIDOUGH_COOKIES_FILE`:** the file contains live
-> session cookies — anyone who can read it can act as your Cookidoo
-> account. The server writes it with `0600` permissions; keep it outside
-> any repository (the bundled `.gitignore` excludes `cookies.json` /
-> `*.cookies.json`) and treat it like a password.
+A restored token authenticates the `cookidoo-api` calls immediately. Search
+and the interaction endpoints are authenticated by the session cookies that
+only a full login produces, so the first of those calls after a restart
+triggers one login anyway.
+
+> **Security note on `COOKIDOUGH_TOKEN_FILE`:** the file holds the OAuth2
+> access and refresh tokens — anyone who can read it can act as your
+> Cookidoo account, and a refresh token outlives a session cookie. The
+> server creates it with `0600` permissions before writing; keep it outside
+> any repository (the bundled `.gitignore` excludes `token.json` /
+> `*.token.json`) and treat it like a password.
 
 ## Tool reference
 
@@ -261,82 +267,82 @@ a strongly typed Pydantic DTO (see [`src/cookidough_mcp/models.py`](src/cookidou
 
 ### Authentication & account
 
-| Tool                 | Purpose                                                |
-| -------------------- | ------------------------------------------------------ |
-| `get_user_profile`   | Return the authenticated user's Cookidoo profile (also triggers the lazy login on first use); `include_devices=true` adds linked Thermomix devices + accessories |
-| `get_subscription`   | Return the active Cookidoo subscription, if any        |
+| Tool               | Purpose                                                                                                                                                          |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `get_user_profile` | Return the authenticated user's Cookidoo profile (also triggers the lazy login on first use); `include_devices=true` adds linked Thermomix devices + accessories |
+| `get_subscription` | Return the active Cookidoo subscription, if any                                                                                                                  |
 
 ### Recipes
 
 Lookup of any Cookidoo recipe plus the full custom-recipe workflow
 (generate → validate → upload, list / delete, scrape from supported sites).
 
-| Tool                        | Purpose                                                                                       |
-| --------------------------- | --------------------------------------------------------------------------------------------- |
+| Tool                        | Purpose                                                                                                                                                                                                   |
+|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `get_recipe_details`        | Full details of a Cookidoo recipe by ID, incl. categories, collections and nutrition; `include_interactions=true` adds own/community rating + personal note, `include_images=true` adds all recipe photos |
-| `get_custom_recipe_details` | Full details of one of your own custom recipes by ID                                          |
-| `generate_recipe_structure` | Build a validated custom-recipe draft (steps accept plain strings or structured `RecipeStep`s — see [Guided-cooking annotations](#guided-cooking-annotations)) |
-| `validate_recipe_quality`   | Score a draft against the Thermomix recipe quality bar without uploading                      |
-| `upload_custom_recipe`      | Upload a draft (rolls back on failure, blocked by [Quality gate](#quality-gate)); pass `recipe_id` to overwrite an existing custom recipe (full replace) |
-| `list_custom_recipes`       | List all custom recipes you own                                                               |
-| `delete_custom_recipe`      | Delete one of your custom recipes by ID                                                       |
-| `clone_recipe_as_custom`    | Copy a Cookidoo recipe into your custom recipes at a chosen serving size                      |
-| `import_web_recipe`         | Scrape a recipe; always returns the draft + quality report, uploads only when the gate passes |
-| `set_custom_recipe_image`   | Upload a photo (path or URL, JPEG/PNG, ≥80×80 px, ≤10 MB) for a custom recipe via Vorwerk's signed Cloudinary flow |
+| `get_custom_recipe_details` | Full details of one of your own custom recipes by ID                                                                                                                                                      |
+| `generate_recipe_structure` | Build a validated custom-recipe draft (steps accept plain strings or structured `RecipeStep`s — see [Guided-cooking annotations](#guided-cooking-annotations))                                            |
+| `validate_recipe_quality`   | Score a draft against the Thermomix recipe quality bar without uploading                                                                                                                                  |
+| `upload_custom_recipe`      | Upload a draft (rolls back on failure, blocked by [Quality gate](#quality-gate)); pass `recipe_id` to overwrite an existing custom recipe (full replace)                                                  |
+| `list_custom_recipes`       | List all custom recipes you own                                                                                                                                                                           |
+| `delete_custom_recipe`      | Delete one of your custom recipes by ID                                                                                                                                                                   |
+| `clone_recipe_as_custom`    | Copy a Cookidoo recipe into your custom recipes at a chosen serving size                                                                                                                                  |
+| `import_web_recipe`         | Scrape a recipe; always returns the draft + quality report, uploads only when the gate passes                                                                                                             |
+| `set_custom_recipe_image`   | Upload a photo (path or URL, JPEG/PNG, ≥80×80 px, ≤10 MB) for a custom recipe via Vorwerk's signed Cloudinary flow                                                                                        |
 
 Custom recipe upload talks to the same undocumented `/created-recipes/{locale}`
 endpoint that the official Cookidoo apps use. Recipe photos are uploaded
 directly to Vorwerk's Cloudinary tenant (`api-eu.cloudinary.com`) after
 Cookidoo signs the request — the image bytes leave your machine to that
 third-party host, exactly as in the official web app; your Cookidoo
-session cookies are never sent there.
+credentials are never sent there.
 
 ### Collections
 
-| Tool                                  | Purpose                                              |
-| ------------------------------------- | ---------------------------------------------------- |
-| `list_managed_collections`            | List Cookidoo-curated collections you subscribe to (paged: `items` + `total_pages`/`total_elements`) |
-| `add_managed_collection`              | Subscribe to a managed collection by ID              |
-| `remove_managed_collection`           | Unsubscribe from a managed collection                |
-| `list_custom_collections`             | List your own custom collections (paged, same shape) |
-| `create_custom_collection`            | Create a new empty custom collection                 |
-| `delete_custom_collection`            | Delete a custom collection (recipes are kept)        |
-| `add_recipes_to_custom_collection`    | Add one or more recipes to a custom collection       |
-| `remove_recipe_from_custom_collection` | Remove a single recipe from a custom collection      |
+| Tool                                   | Purpose                                                                                              |
+|----------------------------------------|------------------------------------------------------------------------------------------------------|
+| `list_managed_collections`             | List Cookidoo-curated collections you subscribe to (paged: `items` + `total_pages`/`total_elements`) |
+| `add_managed_collection`               | Subscribe to a managed collection by ID                                                              |
+| `remove_managed_collection`            | Unsubscribe from a managed collection                                                                |
+| `list_custom_collections`              | List your own custom collections (paged, same shape)                                                 |
+| `create_custom_collection`             | Create a new empty custom collection                                                                 |
+| `delete_custom_collection`             | Delete a custom collection (recipes are kept)                                                        |
+| `add_recipes_to_custom_collection`     | Add one or more recipes to a custom collection                                                       |
+| `remove_recipe_from_custom_collection` | Remove a single recipe from a custom collection                                                      |
 
 ### Shopping list
 
-| Tool                                       | Purpose                                                            |
-| ------------------------------------------ | ------------------------------------------------------------------ |
-| `get_shopping_list`                        | Return all items grouped by source (recipe / additional), plus the recipes currently on the list |
+| Tool                                       | Purpose                                                                                                                                                         |
+|--------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `get_shopping_list`                        | Return all items grouped by source (recipe / additional), plus the recipes currently on the list                                                                |
 | `add_recipes_to_shopping_list`             | Add all ingredients of one or more recipes — or, with `from_date`/`to_date`, of every recipe planned in that calendar range (max 4 weeks, incl. custom recipes) |
-| `remove_recipes_from_shopping_list`        | Remove ingredients of given recipes                                |
-| `add_custom_recipes_to_shopping_list`      | Add all ingredients of one or more **custom** recipes              |
-| `remove_custom_recipes_from_shopping_list` | Remove ingredients of given **custom** recipes                     |
-| `set_ingredient_items_ownership`           | Check or uncheck recipe-derived ingredient items by ID             |
-| `add_additional_items`                     | Add free-text items (not tied to a recipe)                         |
-| `rename_additional_items`                  | Rename free-text items in place by ID                              |
-| `set_additional_items_ownership`           | Check or uncheck free-text items by ID                             |
-| `remove_additional_items`                  | Remove free-text items by ID                                       |
-| `clear_shopping_list`                      | Remove every item from the list                                    |
+| `remove_recipes_from_shopping_list`        | Remove ingredients of given recipes                                                                                                                             |
+| `add_custom_recipes_to_shopping_list`      | Add all ingredients of one or more **custom** recipes                                                                                                           |
+| `remove_custom_recipes_from_shopping_list` | Remove ingredients of given **custom** recipes                                                                                                                  |
+| `set_ingredient_items_ownership`           | Check or uncheck recipe-derived ingredient items by ID                                                                                                          |
+| `add_additional_items`                     | Add free-text items (not tied to a recipe)                                                                                                                      |
+| `rename_additional_items`                  | Rename free-text items in place by ID                                                                                                                           |
+| `set_additional_items_ownership`           | Check or uncheck free-text items by ID                                                                                                                          |
+| `remove_additional_items`                  | Remove free-text items by ID                                                                                                                                    |
+| `clear_shopping_list`                      | Remove every item from the list                                                                                                                                 |
 
 ### Calendar / meal plan
 
-| Tool                              | Purpose                                                  |
-| --------------------------------- | -------------------------------------------------------- |
-| `get_calendar_week`               | Meal plan for the week containing the given date         |
-| `add_recipes_to_calendar`         | Schedule one or more recipes on a specific date          |
-| `remove_recipe_from_calendar`     | Remove a planned recipe from a date                      |
-| `add_custom_recipes_to_calendar`  | Schedule one or more **custom** recipes on a date        |
-| `remove_custom_recipe_from_calendar` | Remove a planned **custom** recipe from a date        |
+| Tool                                 | Purpose                                           |
+|--------------------------------------|---------------------------------------------------|
+| `get_calendar_week`                  | Meal plan for the week containing the given date  |
+| `add_recipes_to_calendar`            | Schedule one or more recipes on a specific date   |
+| `remove_recipe_from_calendar`        | Remove a planned recipe from a date               |
+| `add_custom_recipes_to_calendar`     | Schedule one or more **custom** recipes on a date |
+| `remove_custom_recipe_from_calendar` | Remove a planned **custom** recipe from a date    |
 
 ### Discovery (search & suggestions)
 
-| Tool                                | Purpose                                                        |
-| ----------------------------------- | -------------------------------------------------------------- |
-| `search_recipes`                    | Search the Cookidoo recipe library; optional filters: total time, difficulty, categories, required/excluded ingredients, min rating, portions, Thermomix model, accessories, sort order |
-| `suggest_recipes_from_ingredients`  | Rank recipes by ingredient match — library-wide, or only inside the given `collection_ids` |
-| `get_recipe_recommendations`        | Personalized "For you" feed; with `recipe_id`, recipes similar to that one |
+| Tool                               | Purpose                                                                                                                                                                                 |
+|------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `search_recipes`                   | Search the Cookidoo recipe library; optional filters: total time, difficulty, categories, required/excluded ingredients, min rating, portions, Thermomix model, accessories, sort order |
+| `suggest_recipes_from_ingredients` | Rank recipes by ingredient match — library-wide, or only inside the given `collection_ids`                                                                                              |
+| `get_recipe_recommendations`       | Personalized "For you" feed; with `recipe_id`, recipes similar to that one                                                                                                              |
 
 ### Interactions (rating, bookmark, note, history)
 
@@ -344,11 +350,11 @@ These wrap undocumented Cookidoo endpoints (not exposed by
 `cookidoo-api`), verified against the live API; per-action failures are
 reported instead of failing the whole call.
 
-| Tool                       | Purpose                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| `set_recipe_interactions`  | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes) — any combination in one call, with per-action status |
-| `list_bookmarked_recipes`  | List the recipes saved under "My recipes"                      |
-| `get_cooking_history`      | List the recipes logged as cooked, newest first                |
+| Tool                      | Purpose                                                                                                                                                                                          |
+|---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `set_recipe_interactions` | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes) — any combination in one call, with per-action status |
+| `list_bookmarked_recipes` | List the recipes saved under "My recipes"                                                                                                                                                        |
+| `get_cooking_history`     | List the recipes logged as cooked, newest first                                                                                                                                                  |
 
 Reading interactions happens through `get_recipe_details` with
 `include_interactions=true`.
@@ -359,16 +365,16 @@ Beyond tools, the server exposes MCP **resources** (read-only context an
 MCP client can attach without spending a tool call) and **prompts**
 (predefined workflows):
 
-| Resource URI                        | Content                                            |
-| ----------------------------------- | -------------------------------------------------- |
-| `cookidough://shopping-list`        | The current shopping list incl. its recipes (JSON) |
-| `cookidough://calendar/current-week`| The meal plan for the week containing today (JSON) |
-| `cookidough://custom-recipes`       | All custom recipes owned by the user (JSON)        |
+| Resource URI                         | Content                                            |
+|--------------------------------------|----------------------------------------------------|
+| `cookidough://shopping-list`         | The current shopping list incl. its recipes (JSON) |
+| `cookidough://calendar/current-week` | The meal plan for the week containing today (JSON) |
+| `cookidough://custom-recipes`        | All custom recipes owned by the user (JSON)        |
 
-| Prompt             | Workflow                                                        |
-| ------------------ | --------------------------------------------------------------- |
+| Prompt             | Workflow                                                                                                 |
+|--------------------|----------------------------------------------------------------------------------------------------------|
 | `plan_week`        | Plan seven Thermomix dinners (servings, diet, time budget) → confirm → schedule → fill the shopping list |
-| `cook_from_pantry` | Suggest tonight's recipe from the ingredients on hand and offer to complete the shopping list |
+| `cook_from_pantry` | Suggest tonight's recipe from the ingredients on hand and offer to complete the shopping list            |
 
 ## Quality gate
 
@@ -405,11 +411,11 @@ Pydantic rejects unquoted numbers at the boundary.
 `CustomRecipeDraft.tools` lists which Thermomix device **generations**
 the recipe is compatible with. Only three tokens are accepted:
 
-| Value   | Meaning                                                          |
-| ------- | ---------------------------------------------------------------- |
+| Value   | Meaning                                                                                             |
+|---------|-----------------------------------------------------------------------------------------------------|
 | `"TM5"` | Pre-2019 device, no Sanftrührstufe, no browning/steaming/dough/warm_up/blend/turbo/rice_cooker MODE |
 | `"TM6"` | Adds Sanftrührstufe (`speed="soft"`) and the browning, steaming, dough, warm_up, blend, turbo MODEs |
-| `"TM7"` | Adds the rice_cooker MODE                                         |
+| `"TM7"` | Adds the rice_cooker MODE                                                                           |
 
 It is **not** a list of accessories or in-bowl tools — `"Mixtopf"`,
 `"Spatel"`, `"Varoma"`, `"Schmetterling"`, etc. are rejected by Pydantic
@@ -672,10 +678,23 @@ Your virtualenv is on the wrong `mcp` major. This server targets
 **`Access token request failed due to bad request, please check your email or refresh token`**
 Vorwerk retired the `grant_type=password` OAuth flow used by
 `cookidoo-api ≤ 0.17.0` in May 2026. This project requires `cookidoo-api
-≥ 0.17.1`, which ships the browser OAuth2 cookie flow. If you see this
-error you're on an older version — run `./run.sh` (the install marker is
-keyed off `pyproject.toml`, so editing it forces a reinstall) or, for a
-manual install, `pip install --upgrade 'cookidoo-api>=0.17.1'`.
+>=0.18,<0.19`, which ships the browser OAuth2 flow. If you see this error
+you're on an older version — run `./run.sh` (the install marker is keyed
+off `pyproject.toml`, so editing it forces a reinstall) or, for a manual
+install, `pip install --upgrade 'cookidoo-api>=0.18,<0.19'`.
+
+**The server logs in again on every restart although persistence is configured**
+`COOKIDOUGH_COOKIES_FILE` was renamed to `COOKIDOUGH_TOKEN_FILE` when
+cookidoo-api 0.18 switched from cookie to token persistence. Unknown
+`COOKIDOUGH_*` variables are ignored, so the old name disables persistence
+silently. Rename the variable; the old `cookies.json` file holds cookies
+that 0.18 cannot use and can be deleted.
+
+**`AttributeError: 'Cookidoo' object has no attribute 'save_cookies'`**
+cookidoo-api 0.18 replaced cookie persistence with `save_token` /
+`load_token`. Upgrade the project itself (`./run.sh`, or
+`pip install -e .`); versions before this fix only work with
+`cookidoo-api < 0.18`.
 
 ## Credits
 

@@ -47,12 +47,12 @@ class Settings(BaseSettings):
     mcp_host: str = "127.0.0.1"
     mcp_port: Annotated[int, Field(gt=0, lt=65536)] = 8765
 
-    cookies_file: Path | None = Field(
+    token_file: Path | None = Field(
         default=None,
         description=(
-            "Optional path for persisting session cookies across restarts, "
-            "skipping the OAuth2 login when they are still valid. The file "
-            "contains live session credentials — treat it like a password."
+            "Optional path for persisting the OAuth2 tokens across restarts, "
+            "skipping the login while the refresh token is still valid. The "
+            "file contains live credentials — treat it like a password."
         ),
     )
 

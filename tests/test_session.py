@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import stat
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import pytest
-from cookidoo_api import CookidooLocalizationConfig
+from cookidoo_api import Cookidoo, CookidooLocalizationConfig
 from cookidoo_api.exceptions import (
     CookidooAuthException,
     CookidooConfigException,
@@ -454,101 +454,141 @@ async def test_relogin_translates_auth_exception(settings: Any) -> None:
         await session._relogin(observed_generation=1)
 
 
-def _settings_with_cookie_file(tmp_path: Path) -> Settings:
+_TOKEN_JSON = '{"access_token": "at", "refresh_token": "rt", "expires_at": 0.0}'
+
+
+def _settings_with_token_file(tmp_path: Path) -> Settings:
     return Settings(
         email="test@example.com",
         password=SecretStr("hunter2"),
         country="de",
         language="de",
-        cookies_file=tmp_path / "cookies.json",
+        token_file=tmp_path / "token.json",
     )
 
 
-class _CookieClient:
-    """Fake Cookidoo client for the cookie load/save lifecycle."""
+class _TokenPersistence(Protocol):
+    """The slice of the Cookidoo client that token persistence relies on."""
 
-    def __init__(self, *, logged_in_after_load: bool = True, load_raises: bool = False) -> None:
-        self._logged_in = False
-        self._logged_in_after_load = logged_in_after_load
+    def load_token(self, path: str | Path) -> None: ...
+
+    def save_token(self, path: str | Path) -> None: ...
+
+
+def _upstream_guard(client: Cookidoo) -> _TokenPersistence:
+    """Break at mypy time if cookidoo-api renames the persistence API again."""
+    return client
+
+
+class _TokenClient:
+    """Fake Cookidoo client for the token load/save lifecycle."""
+
+    def __init__(self, *, load_raises: bool = False) -> None:
         self._load_raises = load_raises
         self.loads: list[Path] = []
         self.saves: list[Path] = []
         self.logins = 0
         self.localization = _NS(url="https://cookidoo.de", language="de-DE", country_code="de")
 
-    def load_cookies(self, path: Path) -> None:
+    def load_token(self, path: str | Path) -> None:
         if self._load_raises:
-            raise CookidooConfigException(f"Cannot load cookies from {path}.")
-        self.loads.append(path)
-        self._logged_in = self._logged_in_after_load
+            raise CookidooConfigException(f"Cannot load token from {path}.")
+        self.loads.append(Path(path))
 
-    def save_cookies(self, path: Path) -> None:
-        self.saves.append(path)
-        Path(path).write_text("[]", encoding="utf-8")
+    def save_token(self, path: str | Path) -> None:
+        self.saves.append(Path(path))
+        Path(path).write_text(_TOKEN_JSON, encoding="utf-8")
 
     async def login(self) -> None:
         self.logins += 1
 
 
-def test_try_load_cookies_returns_false_without_file(tmp_path: Path) -> None:
-    session = CookidoughSession(_settings_with_cookie_file(tmp_path))
-    client = _CookieClient()
-    assert session._try_load_cookies(client) is False  # type: ignore[arg-type]
+# Keeps the fake bound to the real client's persistence API.
+_FAKE_GUARD: _TokenPersistence = _TokenClient()
+
+
+def test_try_load_token_returns_false_without_file(tmp_path: Path) -> None:
+    session = CookidoughSession(_settings_with_token_file(tmp_path))
+    client = _TokenClient()
+    assert session._try_load_token(client) is False  # type: ignore[arg-type]
     assert client.loads == []
 
 
-def test_try_load_cookies_falls_back_on_unreadable_file(tmp_path: Path) -> None:
-    settings = _settings_with_cookie_file(tmp_path)
-    assert settings.cookies_file is not None
-    settings.cookies_file.write_text("not json", encoding="utf-8")
+def test_try_load_token_falls_back_on_unreadable_file(tmp_path: Path) -> None:
+    settings = _settings_with_token_file(tmp_path)
+    assert settings.token_file is not None
+    settings.token_file.write_text("not json", encoding="utf-8")
     session = CookidoughSession(settings)
-    client = _CookieClient(load_raises=True)
-    assert session._try_load_cookies(client) is False  # type: ignore[arg-type]
+    client = _TokenClient(load_raises=True)
+    assert session._try_load_token(client) is False  # type: ignore[arg-type]
 
 
-def test_try_load_cookies_requires_auth_cookies_in_file(tmp_path: Path) -> None:
-    """A readable file without the required auth cookies must not count as a
-    restored login — otherwise the first call is a guaranteed 401."""
-    settings = _settings_with_cookie_file(tmp_path)
-    assert settings.cookies_file is not None
-    settings.cookies_file.write_text("[]", encoding="utf-8")
+def test_try_load_token_restores_login_from_a_valid_file(tmp_path: Path) -> None:
+    settings = _settings_with_token_file(tmp_path)
+    assert settings.token_file is not None
+    settings.token_file.write_text(_TOKEN_JSON, encoding="utf-8")
     session = CookidoughSession(settings)
-    client = _CookieClient(logged_in_after_load=False)
-    assert session._try_load_cookies(client) is False  # type: ignore[arg-type]
-    assert client.loads == [settings.cookies_file]
+    client = _TokenClient()
+    assert session._try_load_token(client) is True  # type: ignore[arg-type]
+    assert client.loads == [settings.token_file]
 
 
-def test_persist_cookies_writes_file_with_owner_only_mode(tmp_path: Path) -> None:
-    settings = _settings_with_cookie_file(tmp_path)
+def test_persist_token_writes_file_with_owner_only_mode(tmp_path: Path) -> None:
+    settings = _settings_with_token_file(tmp_path)
     session = CookidoughSession(settings)
-    client = _CookieClient()
-    session._persist_cookies(client)  # type: ignore[arg-type]
-    assert settings.cookies_file is not None
-    assert client.saves == [settings.cookies_file]
-    mode = stat.S_IMODE(settings.cookies_file.stat().st_mode)
+    client = _TokenClient()
+    session._persist_token(client)  # type: ignore[arg-type]
+    assert settings.token_file is not None
+    assert client.saves == [settings.token_file]
+    mode = stat.S_IMODE(settings.token_file.stat().st_mode)
     assert mode == 0o600
 
 
-def test_persist_cookies_swallows_write_errors(tmp_path: Path) -> None:
-    settings = _settings_with_cookie_file(tmp_path)
+def test_persist_token_narrows_mode_of_a_pre_existing_world_readable_file(
+    tmp_path: Path,
+) -> None:
+    settings = _settings_with_token_file(tmp_path)
+    assert settings.token_file is not None
+    settings.token_file.write_text("stale", encoding="utf-8")
+    settings.token_file.chmod(0o644)
+    session = CookidoughSession(settings)
+    session._persist_token(_TokenClient())  # type: ignore[arg-type]
+    assert stat.S_IMODE(settings.token_file.stat().st_mode) == 0o600
+
+
+def test_persist_token_swallows_write_errors(tmp_path: Path) -> None:
+    settings = _settings_with_token_file(tmp_path)
     session = CookidoughSession(settings)
 
-    class _BrokenClient(_CookieClient):
-        def save_cookies(self, path: Path) -> None:
+    class _BrokenClient(_TokenClient):
+        def save_token(self, path: str | Path) -> None:
             raise OSError("read-only filesystem")
 
     # Must not raise — persisting is best-effort.
-    session._persist_cookies(_BrokenClient())  # type: ignore[arg-type]
+    session._persist_token(_BrokenClient())  # type: ignore[arg-type]
 
 
-async def test_ensure_logged_in_skips_login_when_cookies_restore_session(
+def test_persist_token_swallows_not_logged_in(tmp_path: Path) -> None:
+    """`save_token` raises when the client never logged in; that must not
+    propagate out of the login path."""
+    settings = _settings_with_token_file(tmp_path)
+    session = CookidoughSession(settings)
+
+    class _NotLoggedInClient(_TokenClient):
+        def save_token(self, path: str | Path) -> None:
+            raise CookidooConfigException("Cannot save token: not logged in.")
+
+    session._persist_token(_NotLoggedInClient())  # type: ignore[arg-type]
+
+
+async def test_ensure_logged_in_skips_login_when_token_restores_session(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    settings = _settings_with_cookie_file(tmp_path)
-    assert settings.cookies_file is not None
-    settings.cookies_file.write_text("[]", encoding="utf-8")
+    settings = _settings_with_token_file(tmp_path)
+    assert settings.token_file is not None
+    settings.token_file.write_text(_TOKEN_JSON, encoding="utf-8")
     session = CookidoughSession(settings)
-    client: Any = _CookieClient(logged_in_after_load=True)
+    client: Any = _TokenClient()
 
     async def _options(country: str) -> list[Any]:
         return [_NS(country_code=country, language="de-DE", url="https://cookidoo.de")]
@@ -562,17 +602,17 @@ async def test_ensure_logged_in_skips_login_when_cookies_restore_session(
         await session.aclose()
 
     assert client.logins == 0
-    assert client.loads == [settings.cookies_file]
+    assert client.loads == [settings.token_file]
     assert session.session_generation == 1
     assert result is client
 
 
-async def test_ensure_logged_in_persists_cookies_after_fresh_login(
+async def test_ensure_logged_in_persists_token_after_fresh_login(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    settings = _settings_with_cookie_file(tmp_path)
+    settings = _settings_with_token_file(tmp_path)
     session = CookidoughSession(settings)
-    client = _CookieClient()  # no cookie file on disk → fresh login
+    client = _TokenClient()  # no token file on disk → fresh login
 
     async def _options(country: str) -> list[Any]:
         return [_NS(country_code=country, language="de-DE", url="https://cookidoo.de")]
@@ -586,23 +626,23 @@ async def test_ensure_logged_in_persists_cookies_after_fresh_login(
         await session.aclose()
 
     assert client.logins == 1
-    assert settings.cookies_file is not None
-    assert client.saves == [settings.cookies_file]
+    assert settings.token_file is not None
+    assert client.saves == [settings.token_file]
 
 
-async def test_relogin_persists_refreshed_cookies(tmp_path: Path) -> None:
-    settings = _settings_with_cookie_file(tmp_path)
+async def test_relogin_persists_refreshed_token(tmp_path: Path) -> None:
+    settings = _settings_with_token_file(tmp_path)
     session = CookidoughSession(settings)
     session._http = _FakeHttp()  # type: ignore[assignment]
     session._session_generation = 1
-    client = _CookieClient()
+    client = _TokenClient()
     session._client = client  # type: ignore[assignment]
 
     await session._relogin(observed_generation=1)
 
     assert client.logins == 1
-    assert settings.cookies_file is not None
-    assert client.saves == [settings.cookies_file]
+    assert settings.token_file is not None
+    assert client.saves == [settings.token_file]
 
 
 def test_collection_to_dto_counts_recipes() -> None:

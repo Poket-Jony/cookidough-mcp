@@ -14,7 +14,8 @@ dependencies = [
     # Capped: 2.0 removed `mcp.server.fastmcp` outright, so an unbounded
     # range breaks fresh installs on every major.
     "mcp[cli]>=2,<3",
-    "cookidoo-api>=0.17.1",
+    # Capped: 0.18 replaced cookie persistence with `save_token`/`load_token`.
+    "cookidoo-api>=0.18,<0.19",
     "aiohttp>=3.9",
     "pydantic>=2.7",
     "pydantic-settings>=2.4",

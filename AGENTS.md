@@ -129,10 +129,20 @@ src/cookidough_mcp/
   set after `aclose` so a stale tool call fails fast instead of silently
   bootstrapping a fresh session. `_relogin` reuses `_login_lock` instead of
   having a dedicated refresh lock.
-- Auth flow: the cookie-based OAuth2 login (cookidoo-api ≥ 0.17.1) means
-  there is no `auth_data` / `refresh_token()` to manage. Session cookies in
-  the shared `aiohttp.ClientSession` carry the identity; on a 401 we
-  re-run `client.login()` via `_relogin` instead of refreshing a token.
+- Auth flow: `login()` (cookidoo-api ≥ 0.18) performs an OAuth2
+  authorization-code + PKCE exchange and authenticates every later call
+  with a `Bearer` token. The library refreshes an expired access token on
+  its own via the stored refresh token; on a 401 we re-run `client.login()`
+  through `_relogin` rather than driving `refresh()` ourselves. The login
+  redirects still need the cookie jar, so `CookieJar(unsafe=True)` stays
+  required.
+- Two auth mechanisms coexist. `cookidoo-api` calls carry the `Bearer`
+  token; the undocumented `cookidoo.<tld>` endpoints in `_authed_http` are
+  authenticated by the cookie jar that `login()` fills, and reject an
+  `Authorization` header. `load_token` restores only the token, so after a
+  restart from `COOKIDOUGH_TOKEN_FILE` the `_authed_http` paths 401 once
+  and recover through `_relogin`. Persistence therefore saves a login only
+  for the `cookidoo-api` paths.
 - The session-generation counter (`_session_generation`, exposed via the
   `session_generation` property) is the single source of truth for re-login
   races. Snapshot it **before** the request, pass the snapshot to `_relogin`
@@ -173,11 +183,12 @@ src/cookidough_mcp/
   default, see `constants.HTTP_TIMEOUT_SECONDS`). Do not bypass this.
 - `aiohttp.ClientSession` cleanup is reentrant and lock-protected; do not
   null `self._http` outside of `aclose()`.
-- The optional cookie file (`COOKIDOUGH_COOKIES_FILE`) contains live
-  session cookies — equivalent to a password. `_persist_cookies` chmods it
-  to `0600` right after writing; never log its contents, never widen its
-  permissions, and keep the `.gitignore` patterns (`cookies.json`,
-  `*.cookies.json`) intact.
+- The optional token file (`COOKIDOUGH_TOKEN_FILE`) holds the OAuth2
+  access and refresh tokens — equivalent to a password, and longer-lived
+  than a session cookie. `_persist_token` creates it with `0600` *before*
+  writing, since `save_token` writes in place; never log its contents,
+  never widen its permissions, and keep the `.gitignore` patterns
+  (`token.json`, `*.token.json`) intact.
 - `set_custom_recipe_image` uploads the image bytes directly to Vorwerk's
   Cloudinary tenant (third-party egress, same as the official web app).
   The upload runs on a dedicated plain `aiohttp.ClientSession` — the

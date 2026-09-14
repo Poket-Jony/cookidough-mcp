@@ -313,13 +313,15 @@ class CookidoughSession:
                     localization=localization,
                 )
                 client = Cookidoo(session=http, cfg=config)
-                if self._try_load_cookies(client):
-                    # A stale cookie set 401s on the first real call and
-                    # ``_relogin`` recovers from there.
-                    _LOGGER.info("Restored Cookidoo session cookies; skipping login.")
+                if self._try_load_token(client):
+                    # Restoring tokens sets the Bearer header but leaves the
+                    # cookie jar empty, so the ``_authed_http`` endpoints 401
+                    # until ``_relogin`` runs a full login. The cookidoo-api
+                    # paths work right away.
+                    _LOGGER.info("Restored Cookidoo session token; skipping login.")
                 else:
                     await client.login()
-                    self._persist_cookies(client)
+                    self._persist_token(client)
             except CookidooAuthException as e:
                 await http.close()
                 raise AuthenticationError(str(e)) from e
@@ -366,38 +368,35 @@ class CookidoughSession:
                 raise AuthenticationError(str(e)) from e
             except CookidooException as e:
                 raise UpstreamApiError(str(e)) from e
-            self._persist_cookies(client)
+            self._persist_token(client)
             self._session_generation += 1
             return client
 
-    def _try_load_cookies(self, client: Cookidoo) -> bool:
-        """Restore session cookies from disk; True when they carry a login."""
-        path = self._settings.cookies_file
+    def _try_load_token(self, client: Cookidoo) -> bool:
+        """Restore the OAuth2 tokens from disk; True when a login was restored."""
+        path = self._settings.token_file
         if path is None or not path.is_file():
             return False
         try:
-            client.load_cookies(path)
+            client.load_token(path)
         except CookidooConfigException as e:
-            _LOGGER.warning("Ignoring unreadable cookie file %s: %s", path, e)
+            _LOGGER.warning("Ignoring unreadable token file %s: %s", path, e)
             return False
-        # ``load_cookies`` flips the client's private login flag only when
-        # the required auth cookies were actually present in the file. A
-        # file without them must fall through to a fresh login instead of
-        # producing a guaranteed 401 on the first call.
-        return bool(getattr(client, "_logged_in", False))
+        return True
 
-    def _persist_cookies(self, client: Cookidoo) -> None:
-        path = self._settings.cookies_file
+    def _persist_token(self, client: Cookidoo) -> None:
+        path = self._settings.token_file
         if path is None:
             return
         try:
-            client.save_cookies(path)
-            # The file holds live session credentials — owner-only access.
+            # ``save_token`` writes in place, so narrow the mode beforehand.
+            path.touch(mode=0o600, exist_ok=True)
             path.chmod(0o600)
-        except OSError as e:
+            client.save_token(path)
+        except (OSError, CookidooConfigException) as e:
             # Persisting is an optimization; a read-only directory must
             # never break the login itself.
-            _LOGGER.warning("Could not persist Cookidoo cookies to %s: %s", path, e)
+            _LOGGER.warning("Could not persist Cookidoo token to %s: %s", path, e)
 
     async def _run[T](self, op: Callable[[Cookidoo], Awaitable[T]]) -> T:
         client = await self._ensure_logged_in()
@@ -775,7 +774,8 @@ class CookidoughSession:
         origin = _localization_origin(localization.url)
         # The Cookidoo search API isn't exposed by cookidoo-api, but the
         # public web app hits the same /search/{language} endpoint. The
-        # OAuth2 cookie populated by client.login() authenticates it.
+        # session cookies from client.login() authenticate it, not the
+        # Bearer token.
         #
         # Encoding discipline: language goes into the path so reserved chars
         # MUST be percent-encoded (``safe=""``). The query parameters use

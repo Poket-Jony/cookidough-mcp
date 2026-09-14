@@ -37,12 +37,12 @@ def test_country_code_is_always_lowercase() -> None:
     assert _settings(country="DE", language="de").country_code == "de"
 
 
-def test_cookies_file_defaults_to_none() -> None:
-    assert _settings(country="de", language="de").cookies_file is None
+def test_token_file_defaults_to_none() -> None:
+    assert _settings(country="de", language="de").token_file is None
 
 
-def test_cookies_file_parses_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("COOKIDOUGH_COOKIES_FILE", "/tmp/cookidoo-cookies.json")
+def test_token_file_parses_to_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("COOKIDOUGH_TOKEN_FILE", "/tmp/cookidoo-token.json")
     settings = _settings(country="de", language="de")
-    assert settings.cookies_file is not None
-    assert settings.cookies_file.name == "cookidoo-cookies.json"
+    assert settings.token_file is not None
+    assert settings.token_file.name == "cookidoo-token.json"
