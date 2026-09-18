@@ -110,91 +110,67 @@ _BROWNING_TIME_RANGE_SECONDS = (1, 1800)
 # is actually part of the head noun.
 _INGREDIENT_UNIT_TOKENS = frozenset(
     {
-        # German: weight / volume
         "g", "gr", "gramm", "kg", "kilogramm", "mg", "ml", "milliliter",
         "cl", "l", "liter", "dl",
-        # German: spoons / pinches / drops
         "el", "esslöffel", "tl", "teelöffel", "msp", "messerspitze",
         "messerspitzen", "prise", "prisen", "schuss", "spritzer", "tropfen",
         "handvoll", "klacks", "schluck",
-        # German: counted / packaged
         "stk", "stück", "stücke", "pck", "päckchen", "pkg", "packung",
         "packungen", "dose", "dosen", "becher", "tasse", "tassen", "glas",
         "gläser", "tüte", "tüten", "beutel", "schale", "schalen", "tafel",
         "tafeln", "riegel", "block", "blöcke", "kanne", "kannen", "kelle",
         "kellen", "karton", "kartons", "flasche", "flaschen", "kugel",
         "kugeln", "portion", "portionen", "würfel", "schälchen", "schüssel",
-        # German: produce / herbs
         "bund", "bünde", "bündel", "sträußchen", "strauß", "zweig", "zweige",
         "stiel", "stiele", "stängel", "stange", "stangen", "blatt", "blätter",
         "scheibe", "scheiben", "kopf", "köpfe", "zehe", "zehen", "knolle",
         "knollen", "rispe", "rispen", "büschel", "körner", "flocken", "ähre",
         "ähren",
-        # English: weight / volume
         "oz", "lb", "lbs", "fl",
-        # English: spoons / pinches
         "tsp", "tbsp", "tbs", "pinch", "pinches", "dash", "dashes", "drop",
         "drops", "handful", "knob",
-        # English: counted / packaged
         "can", "cans", "jar", "jars", "packet", "packets", "bag", "bags",
         "box", "boxes", "carton", "cartons", "bottle", "bottles", "cup",
         "cups", "glass", "glasses", "stick", "sticks", "slice", "slices",
         "piece", "pieces", "blocks", "loaf", "loaves",
-        # English: produce
         "bunch", "bunches", "sprig", "sprigs", "stalk", "stalks", "stem",
         "stems", "clove", "cloves", "head", "heads", "leaf", "leaves",
-        # French: weight / volume
         "gramme", "grammes", "litre", "litres",
-        # French: spoons / pinches
         "cuillère", "cuillères", "cuillerée", "cuillerées", "càs", "càc",
         "pincée", "pincées", "goutte", "gouttes", "poignée", "poignées",
-        # French: counted / packaged
         "boîte", "boîtes", "sachet", "sachets", "paquet", "paquets", "verre",
         "verres", "bouteille", "bouteilles", "pot", "pots", "bocal", "bocaux",
         "tranche", "tranches", "morceau", "morceaux", "tablette", "tablettes",
-        # French: produce
         "botte", "bottes", "brin", "brins", "branche", "branches", "gousse",
         "gousses", "tige", "tiges", "feuille", "feuilles", "tête", "têtes",
         "bouquet", "bouquets", "grappe", "grappes",
-        # Italian: weight / volume (mostly shares g/kg/ml with German)
         "grammo", "grammi", "litro", "litri",
-        # Italian: spoons / pinches
         "cucchiaio", "cucchiai", "cucchiaino", "cucchiaini", "pizzico",
         "pizzichi", "manciata", "manciate", "goccia", "gocce",
-        # Italian: counted / packaged
         "scatola", "scatole", "barattolo", "barattoli", "bustina", "bustine",
         "confezione", "confezioni", "bicchiere", "bicchieri", "tazza", "tazze",
         "bottiglia", "bottiglie", "vasetto", "vasetti", "fetta", "fette",
         "pezzo", "pezzi", "tavoletta", "tavolette",
-        # Italian: produce
         "mazzo", "mazzi", "mazzetto", "mazzetti", "ramo", "rami", "rametto",
         "rametti", "spicchio", "spicchi", "gambo", "gambi", "foglia", "foglie",
         "testa", "teste", "grappolo", "grappoli", "ciuffo", "ciuffi",
-        # Spanish: weight / volume
         "gramo", "gramos", "litros",
-        # Spanish: spoons / pinches
         "cucharada", "cucharadas", "cucharadita", "cucharaditas", "pizca",
         "pizcas", "puñado", "puñados", "gota", "gotas", "chorro", "chorros",
-        # Spanish: counted / packaged
         "lata", "latas", "bote", "botes", "sobre", "sobres", "paquete",
         "paquetes", "vaso", "vasos", "taza", "tazas", "botella", "botellas",
         "frasco", "frascos", "tableta", "tabletas", "rodaja", "rodajas",
         "trozo", "trozos",
-        # Spanish: produce
         "manojo", "manojos", "rama", "ramas", "ramita", "ramitas", "diente",
         "dientes", "tallo", "tallos", "hoja", "hojas", "cabeza", "cabezas",
         "racimo", "racimos",
-        # Dutch: weight / volume (g/kg/ml shared)
         "gram", "kilo",
-        # Dutch: spoons / pinches
         "eetlepel", "eetlepels", "theelepel", "theelepels", "snufje",
         "snufjes", "scheutje", "scheutjes", "handje", "handjes",
-        # Dutch: counted / packaged
         "blikje", "blikjes", "blik", "blikken", "zakje", "zakjes", "pakje",
         "pakjes", "pak", "pakken", "fles", "flessen", "glazen",
         "kop", "koppen", "kopje", "kopjes", "plak", "plakken", "stuk",
         "stukken", "reep", "repen",
-        # Dutch: produce
         "bos", "bosjes", "bosje", "tak", "takken", "takje", "takjes", "teen",
         "tenen", "blad", "bladen", "bladeren", "stengel", "stengels", "krop",
         "kroppen",

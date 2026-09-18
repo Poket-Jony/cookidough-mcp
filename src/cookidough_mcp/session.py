@@ -316,10 +316,6 @@ class CookidoughSession:
             try:
                 client = self._build_client(http, localization)
                 if self._try_load_token(client):
-                    # Restoring tokens sets the Bearer header but leaves the
-                    # cookie jar empty, so the ``_authed_http`` endpoints 401
-                    # until ``_relogin`` runs a full login. The cookidoo-api
-                    # paths work right away.
                     _LOGGER.info("Restored Cookidoo session token; skipping login.")
                 else:
                     await client.login()
@@ -790,9 +786,7 @@ class CookidoughSession:
         localization = client.localization
         origin = _localization_origin(localization.url)
         # The Cookidoo search API isn't exposed by cookidoo-api, but the
-        # public web app hits the same /search/{language} endpoint. The
-        # session cookies from client.login() authenticate it, not the
-        # Bearer token.
+        # public web app hits the same /search/{language} endpoint.
         #
         # Encoding discipline: language goes into the path so reserved chars
         # MUST be percent-encoded (``safe=""``). The query parameters use
@@ -1391,6 +1385,13 @@ class CookidoughSession:
         localization = client.localization
         return f"{_localization_origin(localization.url)}/recipes/custom-recipes/{recipe_id}"
 
+    def _bearer_header(self) -> dict[str, str]:
+        client = self._client
+        auth = client.auth_data if client is not None else None
+        if auth is None:
+            return {}
+        return {"Authorization": f"Bearer {auth.access_token}"}
+
     @asynccontextmanager
     async def _authed_http(
         self,
@@ -1404,10 +1405,7 @@ class CookidoughSession:
             raise UpstreamApiError("HTTP session is not initialized.")
 
         async def _send() -> ClientResponse:
-            # Auth rides on the cookie jar populated by ``Cookidoo.login()``;
-            # no ``Authorization`` header is needed (or accepted) by the
-            # OAuth2-proxy-fronted ``cookidoo.<tld>`` endpoints.
-            headers = {"Accept": "application/json"}
+            headers = {"Accept": "application/json", **self._bearer_header()}
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
             if self._settings.is_china_market:

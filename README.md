@@ -248,10 +248,8 @@ The server is configured purely via environment variables (see
 | `COOKIDOUGH_QUALITY_BAR` | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads                                                 |
 | `COOKIDOUGH_TOKEN_FILE`  | no       | -           | Optional path for persisting the OAuth2 tokens across restarts (skips the login while the refresh token is valid) |
 
-A restored token authenticates the `cookidoo-api` calls immediately. Search
-and the interaction endpoints are authenticated by the session cookies that
-only a full login produces, so the first of those calls after a restart
-triggers one login anyway.
+A restored token authenticates every call immediately — the library calls as
+well as search and the interaction endpoints.
 
 > **Security note on `COOKIDOUGH_TOKEN_FILE`:** the file holds the OAuth2
 > access and refresh tokens — anyone who can read it can act as your

@@ -144,13 +144,14 @@ src/cookidough_mcp/
   through `_relogin` rather than driving `refresh()` ourselves. The login
   redirects still need the cookie jar, so `CookieJar(unsafe=True)` stays
   required.
-- Two auth mechanisms coexist. `cookidoo-api` calls carry the `Bearer`
-  token; the undocumented `cookidoo.<tld>` endpoints in `_authed_http` are
-  authenticated by the cookie jar that `login()` fills, and reject an
-  `Authorization` header. `load_token` restores only the token, so after a
-  restart from `COOKIDOUGH_TOKEN_FILE` the `_authed_http` paths 401 once
-  and recover through `_relogin`. Persistence therefore saves a login only
-  for the `cookidoo-api` paths.
+- One auth mechanism. Both the `cookidoo-api` calls and the undocumented
+  `cookidoo.<tld>` endpoints in `_authed_http` carry the same `Bearer`
+  token; `_bearer_header` reads it from `client.auth_data` per attempt so
+  the retry after `_relogin` uses the fresh token. Cookie auth on those
+  endpoints was retired upstream (verified 2026-09-18: cookie-only answers
+  401, or 302 to the login for `/created-recipes`) — do not go back to it.
+  A token restored from `COOKIDOUGH_TOKEN_FILE` therefore authenticates
+  every path right away.
 - The session-generation counter (`_session_generation`, exposed via the
   `session_generation` property) is the single source of truth for re-login
   races. Snapshot it **before** the request, pass the snapshot to `_relogin`

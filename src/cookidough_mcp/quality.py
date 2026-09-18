@@ -323,7 +323,6 @@ def _annotation_indicates_temperature(annotation: StepAnnotation) -> bool:
 
 def _is_thermal_step(step: str) -> bool:
     keywords = (
-        # German
         "kochen",
         "köcheln",
         "anbraten",
@@ -337,7 +336,6 @@ def _is_thermal_step(step: str) -> bool:
         "karamellisieren",
         "dampfgaren",
         "reduzieren",
-        # Romance / English
         "boil",
         "simmer",
         "sauté",
@@ -350,7 +348,6 @@ def _is_thermal_step(step: str) -> bool:
         "caramelize",
         "reduce",
         "heat",
-        # TM7-specific
         "bratfunktion",
     )
     lower = step.lower()

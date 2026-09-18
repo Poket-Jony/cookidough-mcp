@@ -535,12 +535,10 @@ class TestIngredientStrategy:
     @pytest.mark.parametrize(
         ("ingredient", "step_text", "expected_span"),
         [
-            # German: newly added unit tokens
             ("2 Blätter Basilikum", "Basilikum unter den Salat heben.", "Basilikum"),
             ("3 Rispen Cocktailtomaten", "Cocktailtomaten halbieren.", "Cocktailtomaten"),
             ("1 Kugel Mozzarella", "Mozzarella in Scheiben schneiden.", "Mozzarella"),
             ("1 Klacks Butter", "Butter in der Pfanne zerlassen.", "Butter"),
-            # English
             ("2 cloves garlic", "Mince garlic and set aside.", "garlic"),
             ("1 pinch salt", "Add salt to taste.", "salt"),
             ("1 head lettuce", "Wash lettuce thoroughly.", "lettuce"),
