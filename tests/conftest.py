@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import date
@@ -414,6 +415,20 @@ class FakeSession:
 # Static conformity guard: if the protocol grows a method, this assignment
 # breaks at type-check time so the fake can never silently fall out of sync.
 _PROTOCOL_GUARD: CookidoughSessionProtocol = FakeSession()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a developer's real ``.env`` out of the test run.
+
+    ``Settings`` reads ``.env`` from the working directory, so running the
+    suite inside a configured checkout silently injects that account's
+    values into every ``Settings`` the tests build — and a test that asserts
+    on a default then passes or fails depending on whose machine it runs on.
+    """
+    for key in [name for name in os.environ if name.startswith("COOKIDOUGH_")]:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
 
 
 @pytest.fixture
