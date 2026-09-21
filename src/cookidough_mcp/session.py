@@ -73,6 +73,8 @@ from .models import (
     RecipeCollectionRef,
     RecipeDetails,
     RecipeImage,
+    RecipeInstructionGroup,
+    RecipeInstructionStep,
     RecipeInteractions,
     RecipeSearchResult,
     RecipeStep,
@@ -85,6 +87,7 @@ from .models import (
     Subscription,
     UserProfile,
 )
+from .step_text import plain_step_text
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -497,6 +500,10 @@ class CookidoughSession:
                 for col in getattr(details, "collections", []) or []
             ],
             nutrition=_nutrition_to_dtos(getattr(details, "nutrition_groups", []) or []),
+            instructions=_instruction_groups_to_dtos(
+                getattr(details, "step_groups", []) or [],
+                self._settings.language_code,
+            ),
         )
 
     async def get_recipe_images(self, recipe_id: str) -> list[RecipeImage]:
@@ -1693,6 +1700,32 @@ def _resolved_image_url(
     if not isinstance(url, str) or not url:
         return None
     return url.replace(_IMAGE_TRANSFORMATION_PLACEHOLDER, transformation)
+
+
+def _instruction_groups_to_dtos(groups: Any, language: str) -> list[RecipeInstructionGroup]:
+    """Map cookidoo-api step groups to DTOs, dropping what renders empty.
+
+    A step whose text is markup only carries nothing for the caller, and a
+    group left without steps is dropped in turn.
+    """
+    dtos: list[RecipeInstructionGroup] = []
+    for group in groups:
+        steps = [
+            step
+            for step in (
+                RecipeInstructionStep(
+                    title=getattr(raw, "title", None) or None,
+                    text=plain_step_text(getattr(raw, "formatted_text", "") or "", language),
+                )
+                for raw in getattr(group, "recipe_steps", []) or []
+            )
+            if step.text
+        ]
+        if steps:
+            dtos.append(
+                RecipeInstructionGroup(title=getattr(group, "title", None) or None, steps=steps)
+            )
+    return dtos
 
 
 def _recipe_images_from_payload(payload: Any) -> list[RecipeImage]:

@@ -127,6 +127,22 @@ class RecipeImage(_Model):
     landscape: str | None = None
 
 
+class RecipeInstructionStep(_Model):
+    """One step of a catalogue recipe, rendered as plain text."""
+
+    # Cookidoo numbers its steps in ``title`` ("1", "2", ...), but the field
+    # is free text and some recipes name the step instead of numbering it.
+    title: str | None = None
+    text: str
+
+
+class RecipeInstructionGroup(_Model):
+    """A titled block of steps (dough, filling, ...)."""
+
+    title: str | None = None
+    steps: list[RecipeInstructionStep] = Field(default_factory=list)
+
+
 class RecipeDetails(_Model):
     id: str = Field(min_length=1)
     name: str
@@ -143,6 +159,9 @@ class RecipeDetails(_Model):
     utensils: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     ingredients: list[Ingredient] = Field(default_factory=list)
+    # Cookidoo groups its steps (dough, filling, ...) and the group
+    # titles carry the plan of the recipe, so the grouping is kept.
+    instructions: list[RecipeInstructionGroup] = Field(default_factory=list)
     categories: list[RecipeCategory] = Field(default_factory=list)
     collections: list[RecipeCollectionRef] = Field(default_factory=list)
     nutrition: list[NutritionInfo] = Field(default_factory=list)

@@ -90,6 +90,86 @@ async def test_get_user_profile(patched_session: tuple[CookidoughSession, Any]) 
     assert profile.username == "u"
 
 
+async def test_get_recipe_details_maps_instruction_groups(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.get_recipe_details = AsyncMock(
+        return_value=_NS(
+            id="r1",
+            name="Sample",
+            url="https://cookidoo.de/recipes/r1",
+            thumbnail=None,
+            image=None,
+            difficulty="easy",
+            serving_size=4,
+            active_time=600,
+            total_time=1800,
+            utensils=[],
+            notes=[],
+            ingredients=[],
+            categories=[],
+            collections=[],
+            nutrition_groups=[],
+            step_groups=[
+                _NS(
+                    title="Teig",
+                    recipe_steps=[
+                        _NS(
+                            title="1",
+                            formatted_text=(
+                                "Mehl <nobr>30 Sek./\ue003/Stufe 5</nobr> &amp; beiseitestellen."
+                            ),
+                        ),
+                        # Markup-only steps carry nothing and are dropped.
+                        _NS(title="2", formatted_text="<nobr></nobr>"),
+                    ],
+                ),
+                # A group left without a usable step disappears with it.
+                _NS(title="Leer", recipe_steps=[_NS(title="3", formatted_text="")]),
+            ],
+        )
+    )
+
+    details = await session.get_recipe_details("r1")
+
+    assert len(details.instructions) == 1
+    group = details.instructions[0]
+    assert group.title == "Teig"
+    assert len(group.steps) == 1
+    assert group.steps[0].title == "1"
+    # The settings fixture is a de-DE account, so the glyph takes its German
+    # wording and the HTML entity is resolved.
+    assert group.steps[0].text == "Mehl 30 Sek./Linkslauf/Stufe 5 & beiseitestellen."
+
+
+async def test_get_recipe_details_without_step_groups_yields_no_instructions(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    # Pre-0.18 cookidoo-api payloads carry no ``step_groups`` at all.
+    fake.get_recipe_details = AsyncMock(
+        return_value=_NS(
+            id="r1",
+            name="Sample",
+            url="https://cookidoo.de/recipes/r1",
+            thumbnail=None,
+            image=None,
+            difficulty=None,
+            serving_size=None,
+            active_time=None,
+            total_time=None,
+            utensils=[],
+            notes=[],
+            ingredients=[],
+        )
+    )
+
+    details = await session.get_recipe_details("r1")
+
+    assert details.instructions == []
+
+
 async def test_get_recipe_details_maps_categories_collections_and_nutrition(
     patched_session: tuple[CookidoughSession, Any],
 ) -> None:
