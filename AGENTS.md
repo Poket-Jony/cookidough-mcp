@@ -110,6 +110,7 @@ src/cookidough_mcp/
 ├── quality.py            # Thermomix recipe quality rule strategy set
 ├── annotation_models.py  # Guided-cooking annotation DTOs (discriminated union)
 ├── annotations.py        # Annotation inferrer (text patterns → StepAnnotation)
+├── step_text.py          # formattedText → plain text (markup, Thermomix icons)
 ├── web_import.py         # recipe-scrapers adapter → CustomRecipeDraft
 ├── resources.py          # MCP resources + prompts (read-only context, workflows)
 ├── server.py        # MCPServer instance + lifespan
