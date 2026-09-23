@@ -376,7 +376,7 @@ reported instead of failing the whole call.
 
 | Tool                      | Purpose                                                                                                                                                                                          |
 |---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `set_recipe_interactions` | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes) — any combination in one call, with per-action status |
+| `set_recipe_interactions` | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes, `cooked_at` to backdate the entry) — any combination in one call, with per-action status |
 | `list_bookmarked_recipes` | List the recipes saved under "My recipes"                                                                                                                                                        |
 | `get_cooking_history`     | List the recipes logged as cooked, newest first                                                                                                                                                  |
 
