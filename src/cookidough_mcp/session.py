@@ -8,7 +8,7 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager, suppress
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, Self
@@ -205,7 +205,9 @@ class CookidoughSessionProtocol(Protocol):
     async def rate_recipe(self, recipe_id: str, stars: int) -> None: ...
     async def set_recipe_bookmark(self, recipe_id: str, bookmarked: bool) -> None: ...
     async def set_recipe_note(self, recipe_id: str, text: str | None) -> None: ...
-    async def mark_recipe_cooked(self, recipe_id: str, is_custom: bool = False) -> None: ...
+    async def mark_recipe_cooked(
+        self, recipe_id: str, is_custom: bool = False, cooked_at: datetime | None = None
+    ) -> None: ...
     async def get_cooking_history(self, limit: int = 20) -> list[CookedRecipe]: ...
     async def get_recipe_interactions(self, recipe_id: str) -> RecipeInteractions: ...
     async def get_recipe_recommendations(
@@ -1261,11 +1263,16 @@ class CookidoughSession:
             async with self._authed_http("POST", create_url, json_body=body) as response:
                 await response.read()
 
-    async def mark_recipe_cooked(self, recipe_id: str, is_custom: bool = False) -> None:
+    async def mark_recipe_cooked(
+        self, recipe_id: str, is_custom: bool = False, cooked_at: datetime | None = None
+    ) -> None:
         url = await self._organize_url("api/cooking-history")
         # Upstream validates recipeType against ^(VorwerkRecipe|CreatedRecipe)$.
         recipe_type = "CreatedRecipe" if is_custom else "VorwerkRecipe"
         body = {"recipeId": recipe_id, "recipeType": recipe_type}
+        if cooked_at is not None:
+            # Upstream parses a top-level ISO-8601 instant and stamps "now" without it.
+            body["timestamp"] = cooked_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
         async with self._authed_http("POST", url, json_body=body) as response:
             await response.read()
 

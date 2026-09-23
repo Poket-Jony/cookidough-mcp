@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -1589,6 +1589,20 @@ async def test_mark_recipe_cooked_supports_custom_recipes(
     method, url, body = calls[0]
     assert (method, url) == ("POST", "https://cookidoo.de/organize/de-DE/api/cooking-history")
     assert body == {"recipeId": "cr1", "recipeType": "CreatedRecipe"}
+
+
+async def test_mark_recipe_cooked_sends_timestamp_in_utc(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    session, calls, _ = _interaction_session(monkeypatch, settings)
+    cooked_at = datetime(2026, 9, 21, 13, 0, tzinfo=timezone(timedelta(hours=-3)))
+    await session.mark_recipe_cooked("r1", cooked_at=cooked_at)
+    _, _, body = calls[0]
+    assert body == {
+        "recipeId": "r1",
+        "recipeType": "VorwerkRecipe",
+        "timestamp": "2026-09-21T16:00:00Z",
+    }
 
 
 async def test_get_cooking_history_parses_entries(

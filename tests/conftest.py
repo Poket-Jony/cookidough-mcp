@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -61,7 +61,7 @@ class _Calls:
     rate_recipe: list[tuple[str, int]] = field(default_factory=list)
     set_bookmark: list[tuple[str, bool]] = field(default_factory=list)
     set_note: list[tuple[str, str | None]] = field(default_factory=list)
-    mark_cooked: list[tuple[str, bool]] = field(default_factory=list)
+    mark_cooked: list[tuple[str, bool, datetime | None]] = field(default_factory=list)
     recommendation_calls: list[tuple[str | None, int]] = field(default_factory=list)
 
 
@@ -375,8 +375,10 @@ class FakeSession:
     async def set_recipe_note(self, recipe_id: str, text: str | None) -> None:
         self.calls.set_note.append((recipe_id, text))
 
-    async def mark_recipe_cooked(self, recipe_id: str, is_custom: bool = False) -> None:
-        self.calls.mark_cooked.append((recipe_id, is_custom))
+    async def mark_recipe_cooked(
+        self, recipe_id: str, is_custom: bool = False, cooked_at: datetime | None = None
+    ) -> None:
+        self.calls.mark_cooked.append((recipe_id, is_custom, cooked_at))
 
     async def get_cooking_history(self, limit: int = 20) -> list[CookedRecipe]:
         return [

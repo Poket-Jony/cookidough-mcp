@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -402,7 +402,7 @@ async def test_set_recipe_interactions_runs_requested_actions(
     assert fake_session.calls.rate_recipe == [("r1", 5)]
     assert fake_session.calls.set_bookmark == [("r1", True)]
     assert fake_session.calls.set_note == [("r1", "Top!")]
-    assert fake_session.calls.mark_cooked == [("r1", False)]
+    assert fake_session.calls.mark_cooked == [("r1", False, None)]
 
 
 async def test_set_recipe_interactions_skips_unrequested_actions(
@@ -530,7 +530,39 @@ async def test_set_recipe_interactions_marks_custom_recipe_cooked(
         fake_mcp_context, recipe_id="cr1", mark_cooked=True, is_custom_recipe=True
     )
     assert result.cooked == "ok"
-    assert fake_session.calls.mark_cooked == [("cr1", True)]
+    assert fake_session.calls.mark_cooked == [("cr1", True, None)]
+
+
+async def test_set_recipe_interactions_backdates_cooked_entry(
+    registered_mcp: MCPServer, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    cooked_at = datetime(2026, 9, 21, 13, 0, tzinfo=timezone(timedelta(hours=-3)))
+    result = await _tool_fn(registered_mcp, "set_recipe_interactions")(
+        fake_mcp_context, recipe_id="r1", mark_cooked=True, cooked_at=cooked_at
+    )
+    assert result.cooked == "ok"
+    assert fake_session.calls.mark_cooked == [("r1", False, cooked_at)]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"cooked_at": datetime(2026, 9, 21, tzinfo=UTC)}, "requires mark_cooked"),
+        ({"mark_cooked": True, "cooked_at": datetime(2026, 9, 21)}, "needs a timezone"),  # noqa: DTZ001
+    ],
+)
+async def test_set_recipe_interactions_rejects_invalid_cooked_at(
+    registered_mcp: MCPServer,
+    fake_mcp_context: Any,
+    fake_session: Any,
+    kwargs: dict[str, Any],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        await _tool_fn(registered_mcp, "set_recipe_interactions")(
+            fake_mcp_context, recipe_id="r1", **kwargs
+        )
+    assert not fake_session.calls.mark_cooked
 
 
 async def test_get_cooking_history_tool(registered_mcp: MCPServer, fake_mcp_context: Any) -> None:

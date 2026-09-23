@@ -7,6 +7,7 @@ session layer talks to them directly over the authenticated HTTP channel.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ..context import ToolContext, get_context
@@ -31,6 +32,7 @@ def register(mcp: MCPServer) -> None:
         note: str | None = None,
         mark_cooked: bool = False,
         is_custom_recipe: bool = False,
+        cooked_at: datetime | None = None,
     ) -> RecipeInteractionResult:
         """Set the user's interactions with a recipe in one call.
 
@@ -39,17 +41,24 @@ def register(mcp: MCPServer) -> None:
         text; an empty string deletes the note), ``mark_cooked`` (true logs
         the recipe in the cooking history). Set ``is_custom_recipe=true``
         when logging one of your own recipes as cooked; rating, bookmark
-        and note apply to catalogue recipes only.
+        and note apply to catalogue recipes only. ``cooked_at`` (ISO-8601
+        with a timezone) backdates the cooked entry; without it Cookidoo
+        stamps the current time. History keeps one entry per recipe and the
+        newest timestamp wins, so an older date never replaces a newer one.
 
         Actions run independently — the result reports ``"ok"`` or
         ``"failed: …"`` per action instead of failing the whole call.
         Read everything back via ``get_recipe_details`` with
         ``include_interactions=true``.
         """
+        if cooked_at is not None and not mark_cooked:
+            raise ValueError("cooked_at requires mark_cooked=true.")
         if rating is None and bookmarked is None and note is None and not mark_cooked:
             raise ValueError(
                 "Provide at least one action: rating, bookmarked, note or mark_cooked."
             )
+        if cooked_at is not None and cooked_at.tzinfo is None:
+            raise ValueError("cooked_at needs a timezone, e.g. 2026-09-21T13:00:00-03:00.")
         session = get_context(ctx).session
         actions = _build_actions(
             session,
@@ -59,6 +68,7 @@ def register(mcp: MCPServer) -> None:
             note=note,
             mark_cooked=mark_cooked,
             is_custom_recipe=is_custom_recipe,
+            cooked_at=cooked_at,
         )
         outcomes = dict(
             await asyncio.gather(*(_run_action(field, coro) for field, coro in actions))
@@ -85,6 +95,7 @@ def _build_actions(
     note: str | None,
     mark_cooked: bool,
     is_custom_recipe: bool,
+    cooked_at: datetime | None,
 ) -> list[tuple[str, Coroutine[Any, Any, None]]]:
     actions: list[tuple[str, Coroutine[Any, Any, None]]] = []
     if rating is not None:
@@ -94,7 +105,8 @@ def _build_actions(
     if note is not None:
         actions.append(("note", session.set_recipe_note(recipe_id, note)))
     if mark_cooked:
-        actions.append(("cooked", session.mark_recipe_cooked(recipe_id, is_custom_recipe)))
+        cooked = session.mark_recipe_cooked(recipe_id, is_custom_recipe, cooked_at)
+        actions.append(("cooked", cooked))
     return actions
 
 
