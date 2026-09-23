@@ -8,7 +8,7 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager, suppress
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Protocol, Self
@@ -73,6 +73,8 @@ from .models import (
     RecipeCollectionRef,
     RecipeDetails,
     RecipeImage,
+    RecipeInstructionGroup,
+    RecipeInstructionStep,
     RecipeInteractions,
     RecipeSearchResult,
     RecipeStep,
@@ -85,6 +87,7 @@ from .models import (
     Subscription,
     UserProfile,
 )
+from .step_text import plain_step_text
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable, Callable
@@ -205,7 +208,9 @@ class CookidoughSessionProtocol(Protocol):
     async def rate_recipe(self, recipe_id: str, stars: int) -> None: ...
     async def set_recipe_bookmark(self, recipe_id: str, bookmarked: bool) -> None: ...
     async def set_recipe_note(self, recipe_id: str, text: str | None) -> None: ...
-    async def mark_recipe_cooked(self, recipe_id: str, is_custom: bool = False) -> None: ...
+    async def mark_recipe_cooked(
+        self, recipe_id: str, is_custom: bool = False, cooked_at: datetime | None = None
+    ) -> None: ...
     async def get_cooking_history(self, limit: int = 20) -> list[CookedRecipe]: ...
     async def get_recipe_interactions(self, recipe_id: str) -> RecipeInteractions: ...
     async def get_recipe_recommendations(
@@ -497,6 +502,9 @@ class CookidoughSession:
                 for col in getattr(details, "collections", []) or []
             ],
             nutrition=_nutrition_to_dtos(getattr(details, "nutrition_groups", []) or []),
+            instructions=_instruction_groups_to_dtos(
+                getattr(details, "step_groups", []) or [], self._settings.language_code
+            ),
         )
 
     async def get_recipe_images(self, recipe_id: str) -> list[RecipeImage]:
@@ -1261,11 +1269,15 @@ class CookidoughSession:
             async with self._authed_http("POST", create_url, json_body=body) as response:
                 await response.read()
 
-    async def mark_recipe_cooked(self, recipe_id: str, is_custom: bool = False) -> None:
+    async def mark_recipe_cooked(
+        self, recipe_id: str, is_custom: bool = False, cooked_at: datetime | None = None
+    ) -> None:
         url = await self._organize_url("api/cooking-history")
         # Upstream validates recipeType against ^(VorwerkRecipe|CreatedRecipe)$.
         recipe_type = "CreatedRecipe" if is_custom else "VorwerkRecipe"
         body = {"recipeId": recipe_id, "recipeType": recipe_type}
+        if cooked_at is not None:
+            body["timestamp"] = cooked_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         async with self._authed_http("POST", url, json_body=body) as response:
             await response.read()
 
@@ -1604,6 +1616,19 @@ def _nutrition_to_dtos(nutrition_groups: Any) -> list[NutritionInfo]:
                     values=values,
                 )
             )
+    return result
+
+
+def _instruction_groups_to_dtos(groups: Any, language: str) -> list[RecipeInstructionGroup]:
+    result: list[RecipeInstructionGroup] = []
+    for group in groups:
+        steps = [
+            RecipeInstructionStep(title=step.title or None, text=text)
+            for step in group.recipe_steps
+            if (text := plain_step_text(step.formatted_text, language))
+        ]
+        if steps:
+            result.append(RecipeInstructionGroup(title=group.title or None, steps=steps))
     return result
 
 

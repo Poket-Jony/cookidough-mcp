@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 
@@ -88,6 +88,50 @@ async def test_get_user_profile(patched_session: tuple[CookidoughSession, Any]) 
     profile = await session.get_user_profile()
     assert profile.id == "u-1"
     assert profile.username == "u"
+
+
+async def test_get_recipe_details_maps_instruction_groups(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.get_recipe_details = AsyncMock(
+        return_value=_NS(
+            id="r1",
+            name="Sample",
+            url="https://cookidoo.de/recipes/r1",
+            thumbnail=None,
+            image=None,
+            difficulty="easy",
+            serving_size=4,
+            active_time=600,
+            total_time=1800,
+            utensils=[],
+            notes=[],
+            ingredients=[],
+            step_groups=[
+                _NS(
+                    title="Teig",
+                    recipe_steps=[
+                        _NS(
+                            title="1",
+                            formatted_text=(
+                                "Mehl <nobr>30 Sek./\ue003/Stufe 5</nobr> &amp; beiseitestellen."
+                            ),
+                        ),
+                        _NS(title="2", formatted_text="<nobr></nobr>"),
+                    ],
+                ),
+                _NS(title="Leer", recipe_steps=[_NS(title="", formatted_text="")]),
+            ],
+        )
+    )
+
+    details = await session.get_recipe_details("r1")
+
+    assert [g.title for g in details.instructions] == ["Teig"]
+    [step] = details.instructions[0].steps
+    assert step.title == "1"
+    assert step.text == "Mehl 30 Sek./Linkslauf/Stufe 5 & beiseitestellen."
 
 
 async def test_get_recipe_details_maps_categories_collections_and_nutrition(
@@ -1589,6 +1633,20 @@ async def test_mark_recipe_cooked_supports_custom_recipes(
     method, url, body = calls[0]
     assert (method, url) == ("POST", "https://cookidoo.de/organize/de-DE/api/cooking-history")
     assert body == {"recipeId": "cr1", "recipeType": "CreatedRecipe"}
+
+
+async def test_mark_recipe_cooked_sends_timestamp_in_utc(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    session, calls, _ = _interaction_session(monkeypatch, settings)
+    cooked_at = datetime(2026, 9, 21, 13, 0, tzinfo=timezone(timedelta(hours=-3)))
+    await session.mark_recipe_cooked("r1", cooked_at=cooked_at)
+    _, _, body = calls[0]
+    assert body == {
+        "recipeId": "r1",
+        "recipeType": "VorwerkRecipe",
+        "timestamp": "2026-09-21T16:00:00Z",
+    }
 
 
 async def test_get_cooking_history_parses_entries(

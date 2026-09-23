@@ -69,7 +69,8 @@ below.
 ### Recipe lookup, creation & import
 
 - Fetch full Cookidoo recipe details (`get_recipe_details`) including
-  categories, collections and per-serving nutrition values; optionally
+  the grouped cooking steps (`instructions`, plain text with the Thermomix
+  icons spelled out), categories, collections and per-serving nutrition values; optionally
   with the user's own rating, the community rating and the personal note
   (`include_interactions=true`) and every recipe photo in
   square/portrait/landscape variants (`include_images=true`).
@@ -303,7 +304,7 @@ Lookup of any Cookidoo recipe plus the full custom-recipe workflow
 
 | Tool                        | Purpose                                                                                                                                                                                                   |
 |-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `get_recipe_details`        | Full details of a Cookidoo recipe by ID, incl. categories, collections and nutrition; `include_interactions=true` adds own/community rating + personal note, `include_images=true` adds all recipe photos |
+| `get_recipe_details`        | Full details of a Cookidoo recipe by ID, incl. cooking steps, categories, collections and nutrition; `include_interactions=true` adds own/community rating + personal note, `include_images=true` adds all recipe photos |
 | `get_custom_recipe_details` | Full details of one of your own custom recipes by ID                                                                                                                                                      |
 | `generate_recipe_structure` | Build a validated custom-recipe draft (steps accept plain strings or structured `RecipeStep`s — see [Guided-cooking annotations](#guided-cooking-annotations))                                            |
 | `validate_recipe_quality`   | Score a draft against the Thermomix recipe quality bar without uploading                                                                                                                                  |
@@ -376,7 +377,7 @@ reported instead of failing the whole call.
 
 | Tool                      | Purpose                                                                                                                                                                                          |
 |---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `set_recipe_interactions` | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes) — any combination in one call, with per-action status |
+| `set_recipe_interactions` | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes, `cooked_at` to backdate the entry) — any combination in one call, with per-action status |
 | `list_bookmarked_recipes` | List the recipes saved under "My recipes"                                                                                                                                                        |
 | `get_cooking_history`     | List the recipes logged as cooked, newest first                                                                                                                                                  |
 

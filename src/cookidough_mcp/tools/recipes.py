@@ -42,6 +42,10 @@ def register(mcp: MCPServer) -> None:
     ) -> RecipeDetails:
         """Fetch full details of a Cookidoo recipe by its ID.
 
+        ``instructions`` holds the cooking steps in Cookidoo's own groups
+        (dough, filling, ...) as plain text, with the Thermomix icons spelled
+        out ("30 sec/sens inverse/vitesse 5").
+
         With ``include_interactions=true`` the result also carries the
         user's own rating, the community rating and the personal note.
         With ``include_images=true`` it lists every photo of the recipe

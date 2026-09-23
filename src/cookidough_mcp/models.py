@@ -127,6 +127,16 @@ class RecipeImage(_Model):
     landscape: str | None = None
 
 
+class RecipeInstructionStep(_Model):
+    title: str | None = None
+    text: str
+
+
+class RecipeInstructionGroup(_Model):
+    title: str | None = None
+    steps: list[RecipeInstructionStep] = Field(default_factory=list)
+
+
 class RecipeDetails(_Model):
     id: str = Field(min_length=1)
     name: str
@@ -143,6 +153,7 @@ class RecipeDetails(_Model):
     utensils: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
     ingredients: list[Ingredient] = Field(default_factory=list)
+    instructions: list[RecipeInstructionGroup] = Field(default_factory=list)
     categories: list[RecipeCategory] = Field(default_factory=list)
     collections: list[RecipeCollectionRef] = Field(default_factory=list)
     nutrition: list[NutritionInfo] = Field(default_factory=list)
