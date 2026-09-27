@@ -19,13 +19,13 @@ recipes, manage shopping lists and meal plans, and upload custom recipes.
 - 42 MCP tools across 7 domains (auth, recipes, collections, shopping,
   calendar, discovery, interactions), plus 3 MCP resources and 2 prompts
 - Dual transport: stdio (default) and streamable HTTP
-- Thermomix quality gate that blocks low-quality custom recipe uploads
+- Recipe quality gate that blocks low-quality custom recipe uploads
 - Guided-cooking annotations (TTS time/speed spans, INGREDIENT spans) —
   delivered explicitly by the LLM or inferred server-side from plain text
 - Web recipe import via [`recipe-scrapers`](https://github.com/hhursev/recipe-scrapers)
   (200+ supported sites)
-- Filtered search of the Cookidoo recipe library (time, difficulty,
-  ingredients, rating, Thermomix model, …)
+- Filtered search of the recipe catalogue (time, difficulty,
+  ingredients, rating, device model, …)
 - Ingredient-based recipe suggestions — library-wide or scoped to the
   user's own collections
 - Recipe interactions: rate, bookmark, personal notes, cooked-history
@@ -61,16 +61,18 @@ below.
 
 - Lazy login on first tool call — no separate connect step.
 - Read the user profile and active subscription, including subscription
-  level, type, and expiry; optionally include the Thermomix devices and
+  level, type, and expiry; optionally include the devices and
   accessories linked to the account (`include_devices=true`).
 - Optional token persistence (`COOKIDOUGH_TOKEN_FILE`): the OAuth2 tokens
   survive a server restart and skip the login for the `cookidoo-api` paths.
 
 ### Recipe lookup, creation & import
 
-- Fetch full Cookidoo recipe details (`get_recipe_details`) including
-  the grouped cooking steps (`instructions`, plain text with the Thermomix
-  icons spelled out), categories, collections and per-serving nutrition values; optionally
+- Fetch full details of up to 20 catalogue recipes in one call
+  (`get_recipe_details` with `recipe_ids`, an unknown ID yields an error
+  entry instead of failing the batch) including the grouped cooking steps
+  (`instructions`, plain text with the appliance icons spelled out),
+  categories, collections and per-serving nutrition values; optionally
   with the user's own rating, the community rating and the personal note
   (`include_interactions=true`) and every recipe photo in
   square/portrait/landscape variants (`include_images=true`).
@@ -80,17 +82,17 @@ below.
 - Upload a **photo** for a custom recipe (`set_custom_recipe_image`):
   local file or URL, JPEG/PNG — uploaded via Vorwerk's signed Cloudinary
   flow and preserved across later recipe updates.
-- Clone any Cookidoo recipe into the user's custom recipes at a chosen
+- Clone any catalogue recipe into the user's custom recipes at a chosen
   serving size (`clone_recipe_as_custom`).
-- Build, validate, and upload custom Thermomix recipes from structured input,
+- Build, validate, and upload custom recipes from structured input,
   with guided-cooking annotations (`TTS`, `INGREDIENT`, all seven `MODE`
   variants).
 - Import a recipe directly from any of 200+ supported recipe sites via
   `recipe-scrapers`, returning the parsed draft + a quality report and
   uploading when the gate passes.
-- **Filtered search** of the Cookidoo recipe library (`search_recipes`):
+- **Filtered search** of the recipe catalogue (`search_recipes`):
   total time, difficulty, categories, required/excluded ingredients,
-  minimum rating, portions, Thermomix model, accessories, sort order.
+  minimum rating, portions, device model, accessories, sort order.
 - Ingredient-based **suggestions** (`suggest_recipes_from_ingredients`) —
   library-wide via the server-side ingredient filter, or scoped to the
   user's collections when `collection_ids` is given.
@@ -99,7 +101,7 @@ below.
 
 ### Collections (managed + custom)
 
-- Browse and subscribe to / unsubscribe from Cookidoo-curated managed
+- Browse and subscribe to / unsubscribe from platform-curated managed
   collections.
 - Full CRUD over custom collections: create, list, delete, add recipes,
   remove a single recipe.
@@ -136,13 +138,13 @@ below.
   reporting; read the history back via `get_cooking_history`.
 - Read everything back via `get_recipe_details` with
   `include_interactions=true`; list bookmarks via `list_bookmarked_recipes`.
-- These wrap undocumented Cookidoo endpoints (not part of `cookidoo-api`),
+- These wrap undocumented platform endpoints (not part of `cookidoo-api`),
   verified against the live API; individual failures degrade gracefully
   instead of failing the call.
 
 ### Quality, safety & transport
 
-- Thermomix [quality gate](#quality-gate) that scores every draft and
+- Recipe [quality gate](#quality-gate) that scores every draft and
   refuses low-quality custom recipe uploads unless explicitly forced.
 - All credentials kept in memory as `SecretStr`, with email + token
   redaction in every log message and upstream error body.
@@ -152,7 +154,7 @@ below.
 ## Requirements
 
 - Python **3.12 or newer**
-- A valid Cookidoo account (`COOKIDOUGH_EMAIL` / `COOKIDOUGH_PASSWORD`)
+- A valid Cookidoo® account (`COOKIDOUGH_EMAIL` / `COOKIDOUGH_PASSWORD`)
 - Optional: [`uv`](https://docs.astral.sh/uv/) for the recommended client
   setup, or `pip` if you prefer
 
@@ -239,14 +241,14 @@ The server is configured purely via environment variables (see
 
 | Variable                 | Required | Default     | Description                                                                                                       |
 |--------------------------|----------|-------------|-------------------------------------------------------------------------------------------------------------------|
-| `COOKIDOUGH_EMAIL`       | yes      | -           | Cookidoo account email                                                                                            |
-| `COOKIDOUGH_PASSWORD`    | yes      | -           | Cookidoo account password (stored in memory as `SecretStr`)                                                       |
+| `COOKIDOUGH_EMAIL`       | yes      | -           | Account email                                                                                                     |
+| `COOKIDOUGH_PASSWORD`    | yes      | -           | Account password (stored in memory as `SecretStr`)                                                                |
 | `COOKIDOUGH_COUNTRY`     | no       | `de`        | ISO 3166-1 alpha-2 country code (case-insensitive)                                                                |
 | `COOKIDOUGH_LANGUAGE`    | no       | `de`        | ISO 639-1 (`de`, paired with `COOKIDOUGH_COUNTRY`) or BCP-47 (`de-DE`); case-normalized to `lang-REGION`          |
 | `COOKIDOUGH_MCP_MODE`    | no       | `stdio`     | Transport: `stdio` or `http`                                                                                      |
 | `COOKIDOUGH_MCP_HOST`    | no       | `127.0.0.1` | Bind host (HTTP only)                                                                                             |
 | `COOKIDOUGH_MCP_PORT`    | no       | `8765`      | Bind port (HTTP only)                                                                                             |
-| `COOKIDOUGH_QUALITY_BAR` | no       | `70`        | Minimum Thermomix recipe quality score (0-100) for custom uploads                                                 |
+| `COOKIDOUGH_QUALITY_BAR` | no       | `70`        | Minimum recipe quality score (0-100) for custom uploads                                                           |
 | `COOKIDOUGH_TOKEN_FILE`  | no       | -           | Optional path for persisting the OAuth2 tokens across restarts (skips the login while the refresh token is valid) |
 
 A restored token authenticates every call immediately — the library calls as
@@ -254,14 +256,14 @@ well as search and the interaction endpoints.
 
 > **Security note on `COOKIDOUGH_TOKEN_FILE`:** the file holds the OAuth2
 > access and refresh tokens — anyone who can read it can act as your
-> Cookidoo account, and a refresh token outlives a session cookie. The
+> platform account, and a refresh token outlives a session cookie. The
 > server creates it with `0600` permissions before writing; keep it outside
 > any repository (the bundled `.gitignore` excludes `token.json` /
 > `*.token.json`) and treat it like a password.
 
 ### Mainland China
 
-China runs a separate Cookidoo deployment (`cookidoo.com.cn`) behind its own
+China runs a separate deployment of the platform (`cookidoo.com.cn`) behind its own
 identity provider, with a phone number instead of an email address:
 
 ```bash
@@ -272,7 +274,7 @@ COOKIDOUGH_LANGUAGE=zh-Hans-CN
 
 The server then logs in through the China CIAM and talks to the mainland
 hosts. Custom-recipe updates use the Chinese web editor's granular PATCH
-schema, and recipe images go through Tencent COS plus Cookidoo's moderation
+schema, and recipe images go through Tencent COS plus the platform's moderation
 queue instead of Cloudinary. That upload path needs an optional dependency:
 
 ```bash
@@ -294,39 +296,39 @@ a strongly typed Pydantic DTO (see [`src/cookidough_mcp/models.py`](src/cookidou
 
 | Tool               | Purpose                                                                                                                                                          |
 |--------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `get_user_profile` | Return the authenticated user's Cookidoo profile (also triggers the lazy login on first use); `include_devices=true` adds linked Thermomix devices + accessories |
-| `get_subscription` | Return the active Cookidoo subscription, if any                                                                                                                  |
+| `get_user_profile` | Return the authenticated user's profile (also triggers the lazy login on first use); `include_devices=true` adds linked devices + accessories                   |
+| `get_subscription` | Return the active subscription, if any                                                                                                                           |
 
 ### Recipes
 
-Lookup of any Cookidoo recipe plus the full custom-recipe workflow
+Lookup of any catalogue recipe plus the full custom-recipe workflow
 (generate → validate → upload, list / delete, scrape from supported sites).
 
-| Tool                        | Purpose                                                                                                                                                                                                   |
-|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `get_recipe_details`        | Full details of a Cookidoo recipe by ID, incl. cooking steps, categories, collections and nutrition; `include_interactions=true` adds own/community rating + personal note, `include_images=true` adds all recipe photos |
-| `get_custom_recipe_details` | Full details of one of your own custom recipes by ID                                                                                                                                                      |
-| `generate_recipe_structure` | Build a validated custom-recipe draft (steps accept plain strings or structured `RecipeStep`s — see [Guided-cooking annotations](#guided-cooking-annotations))                                            |
-| `validate_recipe_quality`   | Score a draft against the Thermomix recipe quality bar without uploading                                                                                                                                  |
-| `upload_custom_recipe`      | Upload a draft (rolls back on failure, blocked by [Quality gate](#quality-gate)); pass `recipe_id` to overwrite an existing custom recipe (full replace)                                                  |
-| `list_custom_recipes`       | List all custom recipes you own                                                                                                                                                                           |
-| `delete_custom_recipe`      | Delete one of your custom recipes by ID                                                                                                                                                                   |
-| `clone_recipe_as_custom`    | Copy a Cookidoo recipe into your custom recipes at a chosen serving size                                                                                                                                  |
-| `import_web_recipe`         | Scrape a recipe; always returns the draft + quality report, uploads only when the gate passes                                                                                                             |
-| `set_custom_recipe_image`   | Upload a photo (path or URL, JPEG/PNG, ≥80×80 px, ≤10 MB) for a custom recipe via Vorwerk's signed Cloudinary flow                                                                                        |
+| Tool                        | Purpose                                                                                                                                                                                                                                                                  |
+|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `get_recipe_details`        | Full details of up to 20 catalogue recipes per call (`recipe_ids`, per-ID error entries), incl. cooking steps, categories, collections and nutrition; `include_interactions=true` adds own/community rating + personal note, `include_images=true` adds all recipe photos |
+| `get_custom_recipe_details` | Full details of one of your own custom recipes by ID                                                                                                                                                                                                                     |
+| `generate_recipe_structure` | Build a validated custom-recipe draft (steps accept plain strings or structured `RecipeStep`s — see [Guided-cooking annotations](#guided-cooking-annotations))                                                                                                           |
+| `validate_recipe_quality`   | Score a draft against the recipe quality bar without uploading                                                                                                                                                                                                 |
+| `upload_custom_recipe`      | Upload a draft (rolls back on failure, blocked by [Quality gate](#quality-gate)); pass `recipe_id` to overwrite an existing custom recipe (full replace)                                                                                                                 |
+| `list_custom_recipes`       | List all custom recipes you own                                                                                                                                                                                                                                          |
+| `delete_custom_recipe`      | Delete one of your custom recipes by ID                                                                                                                                                                                                                                  |
+| `clone_recipe_as_custom`    | Copy a catalogue recipe into your custom recipes at a chosen serving size                                                                                                                                                                                                 |
+| `import_web_recipe`         | Scrape a recipe; always returns the draft + quality report, uploads only when the gate passes                                                                                                                                                                            |
+| `set_custom_recipe_image`   | Upload a photo (path or URL, JPEG/PNG, ≥80×80 px, ≤10 MB) for a custom recipe via Vorwerk's signed Cloudinary flow                                                                                                                                                       |
 
 Custom recipe upload talks to the same undocumented `/created-recipes/{locale}`
-endpoint that the official Cookidoo apps use. Recipe photos are uploaded
+endpoint that the official apps use. Recipe photos are uploaded
 directly to Vorwerk's Cloudinary tenant (`api-eu.cloudinary.com`) after
-Cookidoo signs the request — the image bytes leave your machine to that
-third-party host, exactly as in the official web app; your Cookidoo
+the platform signs the request — the image bytes leave your machine to that
+third-party host, exactly as in the official web app; your platform
 credentials are never sent there.
 
 ### Collections
 
 | Tool                                   | Purpose                                                                                              |
 |----------------------------------------|------------------------------------------------------------------------------------------------------|
-| `list_managed_collections`             | List Cookidoo-curated collections you subscribe to (paged: `items` + `total_pages`/`total_elements`) |
+| `list_managed_collections`             | List platform-curated collections you subscribe to (paged: `items` + `total_pages`/`total_elements`) |
 | `add_managed_collection`               | Subscribe to a managed collection by ID                                                              |
 | `remove_managed_collection`            | Unsubscribe from a managed collection                                                                |
 | `list_custom_collections`              | List your own custom collections (paged, same shape)                                                 |
@@ -365,21 +367,21 @@ credentials are never sent there.
 
 | Tool                               | Purpose                                                                                                                                                                                 |
 |------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `search_recipes`                   | Search the Cookidoo recipe library; optional filters: total time, difficulty, categories, required/excluded ingredients, min rating, portions, Thermomix model, accessories, sort order |
+| `search_recipes`                   | Search the recipe catalogue; optional filters: total time, difficulty, categories, required/excluded ingredients, min rating, portions, device model, accessories, sort order         |
 | `suggest_recipes_from_ingredients` | Rank recipes by ingredient match — library-wide, or only inside the given `collection_ids`                                                                                              |
 | `get_recipe_recommendations`       | Personalized "For you" feed; with `recipe_id`, recipes similar to that one                                                                                                              |
 
 ### Interactions (rating, bookmark, note, history)
 
-These wrap undocumented Cookidoo endpoints (not exposed by
+These wrap undocumented platform endpoints (not exposed by
 `cookidoo-api`), verified against the live API; per-action failures are
 reported instead of failing the whole call.
 
-| Tool                      | Purpose                                                                                                                                                                                          |
-|---------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Tool                      | Purpose                                                                                                                                                                                                                             |
+|---------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `set_recipe_interactions` | Rate (1-5), bookmark/unbookmark, set or clear the personal note, and/or log the recipe as cooked (`is_custom_recipe=true` for own recipes, `cooked_at` to backdate the entry) — any combination in one call, with per-action status |
-| `list_bookmarked_recipes` | List the recipes saved under "My recipes"                                                                                                                                                        |
-| `get_cooking_history`     | List the recipes logged as cooked, newest first                                                                                                                                                  |
+| `list_bookmarked_recipes` | List the recipes saved under "My recipes"                                                                                                                                                                                           |
+| `get_cooking_history`     | List the recipes logged as cooked, newest first                                                                                                                                                                                     |
 
 Reading interactions happens through `get_recipe_details` with
 `include_interactions=true`.
@@ -398,7 +400,7 @@ MCP client can attach without spending a tool call) and **prompts**
 
 | Prompt             | Workflow                                                                                                 |
 |--------------------|----------------------------------------------------------------------------------------------------------|
-| `plan_week`        | Plan seven Thermomix dinners (servings, diet, time budget) → confirm → schedule → fill the shopping list |
+| `plan_week`        | Plan seven dinners (servings, diet, time budget) → confirm → schedule → fill the shopping list |
 | `cook_from_pantry` | Suggest tonight's recipe from the ingredients on hand and offer to complete the shopping list            |
 
 ## Quality gate
@@ -413,7 +415,7 @@ mode, accessory mentions, parallelization hints, ingredient/step linkage).
 - `import_web_recipe` **never** raises on quality; it always returns a
   `WebImportResult` with `draft` + `quality` populated and `upload=null`
   + `blocked_reason` set when blocked. The caller (typically an LLM) can
-  read the scraped draft, rewrite the steps with Thermomix guided-cooking
+  read the scraped draft, rewrite the steps with guided-cooking
   annotations (e.g. `5 min / 100 °C / speed 3`) and resubmit via
   `upload_custom_recipe` — no second scrape needed.
 - Pass `force=true` on either tool to upload anyway after the user has
@@ -425,7 +427,7 @@ mode, accessory mentions, parallelization hints, ingredient/step linkage).
 
 A `RecipeStep` carries both human-readable `text` and an optional list of
 typed `annotations` that turn substrings into interactive guided-cooking
-spans in the Cookidoo app:
+spans in the official app:
 
 All `speed` values are **strings** — numeric speeds must be quoted
 (`"4"`, `"6.5"`, …), and `"soft"` is the keyword for *Sanftrührstufe*.
@@ -433,7 +435,7 @@ Pydantic rejects unquoted numbers at the boundary.
 
 ### `tools` — device compatibility, not accessories
 
-`CustomRecipeDraft.tools` lists which Thermomix device **generations**
+`CustomRecipeDraft.tools` lists which device **generations**
 the recipe is compatible with. Only three tokens are accepted:
 
 | Value   | Meaning                                                                                             |
@@ -453,7 +455,7 @@ three.
 
 ### Top-level annotation types
 
-- **`TTS`** — Thermomix time + speed instruction the app dispatches.
+- **`TTS`** — appliance time + speed instruction the app dispatches.
   - `speed`: `"<n>"` (e.g. `"4"`, `"6.5"`) or `"soft"` for Sanftrührstufe
   - `time`: integer seconds
   - `temperature`: optional `{ "value": "<°C>", "unit": "C" }`
@@ -461,7 +463,7 @@ three.
 - **`INGREDIENT`** — Highlights an ingredient reference inside the step text.
   - `description`: canonical ingredient entry — may differ from the visible
     span text (e.g. span `"1 EL Salz"`, description `"Salz und Pfeffer"`)
-- **`MODE`** — Thermomix program. Carries an additional top-level lowercase
+- **`MODE`** — appliance program. Carries an additional top-level lowercase
   `name` field; the `data` shape depends on the name (see below).
 
 ### MODE / `<name>` data shapes
@@ -480,12 +482,12 @@ three.
 
 Each annotation pins its span via `offset` and `length`, counted in
 Python `str` units over the step `text` (Unicode code points; this
-matches what Cookidoo accepted in our PATCH captures, including
+matches what the platform accepted in our PATCH captures, including
 umlauts). Two ways to populate them:
 
 1. **Explicit (LLM-supplied)** — when `generate_recipe_structure` or
    `upload_custom_recipe` receives a `RecipeStep` with `annotations`, the
-   spans go to Cookidoo unchanged. This is the most precise route and is
+   spans go upstream unchanged. This is the most precise route and is
    what the LLM should prefer when it knows the exact substrings.
 
    ```json
@@ -507,7 +509,7 @@ umlauts). Two ways to populate them:
    equivalent), the server scans the text on upload:
 
    - `<n> Min./<temp> °C/(Leicht|Intensiv|Gentle|Intense)` becomes a
-     `MODE/browning` span (temperatures outside the Cookidoo whitelist
+     `MODE/browning` span (temperatures outside the platform's whitelist
      of 140-160 °C in 5 °C steps and durations above 30 min are dropped).
    - `<time>/Varoma/Stufe <n>` becomes a `MODE/steaming` span.
    - `<n> Min./Teigstufe` (and `Stufe Teig` / `dough mode` /
@@ -528,7 +530,7 @@ umlauts). Two ways to populate them:
      include integers (`350`), decimals (`1,5`, `1.5`), ASCII fractions
      (`1/4`), Unicode vulgar fractions (`½`, `¼`, `⅔`, ...), mixed
      fractions (`1 ½`), and ranges (`2-3`). Units cover the common
-     vocabulary across Cookidoo's main locales (DE, EN, FR, IT, ES, NL) —
+     vocabulary across the platform's main locales (DE, EN, FR, IT, ES, NL) —
      including `g`/`ml`/`EL`/`TL`/`Prise`/`Bund`/`Stiel(e)`/`Stängel`/
      `Blätter`/`Pck.`/`Tasse`/`Klacks`/`Block`/`Kugel`/`Rispe`/`Strauß`,
      `tbsp`/`cup`/`pinch`/`clove(s)`/`head(s)`/`leaves`, French
@@ -570,7 +572,7 @@ umlauts). Two ways to populate them:
      `"weißen Spargel"` or just `"Spargel"`. The adjective itself is
      not recovered into the span.
    - `description` carries the **full canonical ingredient line** (not
-     the matched substring) so Cookidoo can resolve quantities.
+     the matched substring) so the platform can resolve quantities.
    - Not handled (supply explicit annotations for these): reverse plural
      (plural ingredient line → singular step), arbitrary compound
      splits without a known portion-word suffix (ingredient
@@ -656,9 +658,9 @@ src/cookidough_mcp/
 ├── models.py            # Pydantic DTOs for every tool I/O
 ├── annotation_models.py # Guided-cooking annotation DTOs (discriminated union)
 ├── session.py           # Repository facade over cookidoo-api + custom HTTP
-├── china_client.py      # Cookidoo client for the mainland-China deployment
+├── china_client.py      # Platform client for the mainland-China deployment
 ├── transport.py         # Stdio / HTTP transport strategies
-├── quality.py           # Thermomix recipe quality rule strategies
+├── quality.py           # Recipe quality rule strategies
 ├── annotations.py       # Annotation inferrer (text patterns → StepAnnotation)
 ├── web_import.py        # recipe-scrapers adapter → CustomRecipeDraft
 ├── resources.py         # MCP resources + prompts (read-only context, workflows)
@@ -684,7 +686,7 @@ Install Python 3.12+ (macOS: `brew install python@3.12`; Debian/Ubuntu:
 Set a different port: `COOKIDOUGH_MCP_PORT=9000 ./run.sh`.
 
 **Custom recipe upload blocked by quality gate**
-Either improve the draft (add Thermomix guided-cooking annotations such as
+Either improve the draft (add guided-cooking annotations such as
 `5 min / 100 °C / speed 3` to each step), lower `COOKIDOUGH_QUALITY_BAR`, or
 re-issue the call with `force=true` after the user accepts the trade-off.
 

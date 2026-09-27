@@ -1,4 +1,4 @@
-"""Cookidoo client for the mainland-China deployment.
+"""Platform client for the mainland-China deployment.
 
 China runs its own identity provider and a phone-number login form, but the
 same OAuth2 authorization-code + PKCE flow as the global site. Only the four
@@ -60,8 +60,8 @@ CHINA_LOCALIZATION: Final = CookidooLocalizationConfig(
 )
 
 
-class ChinaCookidoo(Cookidoo):
-    """Cookidoo client for the official mainland-China phone/password login."""
+class ChinaClient(Cookidoo):
+    """Platform client for the official mainland-China phone/password login."""
 
     def __init__(self, session: ClientSession, *, phone_number: str, password: str) -> None:
         super().__init__(
@@ -237,7 +237,7 @@ class ChinaCookidoo(Cookidoo):
         }
 
     async def upload_recipe_image(self, image_bytes: bytes, content_type: str) -> str:
-        """Upload an image to Tencent COS and wait for Cookidoo's moderation."""
+        """Upload an image to Tencent COS and wait for the platform's moderation."""
         object_id, param_map, folder = await self._allocate_image_slot(content_type)
         token_map = await self._request_cos_token(object_id)
         await self._put_to_cos(object_id, param_map, folder, token_map, image_bytes, content_type)

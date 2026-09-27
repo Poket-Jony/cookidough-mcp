@@ -45,10 +45,10 @@ def register(mcp: MCPServer, app: AppContext) -> None:
 
     @mcp.prompt()
     def plan_week(servings: int = 2, diet: str = "", max_minutes_per_meal: int = 45) -> str:
-        """Plan a week of Thermomix dinners and put everything on the shopping list."""
+        """Plan a week of dinners and put everything on the shopping list."""
         diet_line = f"- Dietary preference: {diet}\n" if diet else ""
         return (
-            f"Plan seven Thermomix dinners for the coming week for {servings} "
+            f"Plan seven dinners for the coming week for {servings} "
             f"person(s).\n"
             f"Constraints:\n"
             f"{diet_line}"
@@ -58,7 +58,7 @@ def register(mcp: MCPServer, app: AppContext) -> None:
             f"Workflow:\n"
             f"1. Use search_recipes with matching filters (max_total_minutes, "
             f"ingredients/exclude_ingredients) to find candidates; check "
-            f"details via get_recipe_details where needed.\n"
+            f"details via get_recipe_details (several IDs per call) where needed.\n"
             f"2. Present the plan briefly and confirm with me before writing.\n"
             f"3. Schedule the chosen recipes with add_recipes_to_calendar "
             f"(one call per day).\n"
@@ -72,7 +72,7 @@ def register(mcp: MCPServer, app: AppContext) -> None:
         """Suggest what to cook tonight from the ingredients on hand."""
         return (
             f"I have these ingredients at home: {ingredients}.\n\n"
-            f"Use suggest_recipes_from_ingredients to find Thermomix recipes "
+            f"Use suggest_recipes_from_ingredients to find recipes "
             f"that match (head nouns work best, e.g. 'chicken' instead of "
             f"'chicken breast'). Rank by match score, show the top three with "
             f"their missing ingredients, and offer to put the missing items "

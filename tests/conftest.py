@@ -27,6 +27,7 @@ from cookidough_mcp.models import (
     CustomRecipeSummary,
     Ingredient,
     RecipeDetails,
+    RecipeDetailsResult,
     RecipeImage,
     RecipeInteractions,
     RecipeSearchResult,
@@ -64,6 +65,7 @@ class _Calls:
     set_note: list[tuple[str, str | None]] = field(default_factory=list)
     mark_cooked: list[tuple[str, bool, datetime | None]] = field(default_factory=list)
     recommendation_calls: list[tuple[str | None, int]] = field(default_factory=list)
+    recipe_details_batches: list[tuple[list[str], bool, bool]] = field(default_factory=list)
 
 
 class FakeSession:
@@ -97,6 +99,19 @@ class FakeSession:
             total_time_seconds=1800,
             ingredients=[Ingredient(id="i1", name="Salt", description="1 tsp")],
         )
+
+    async def get_recipe_details_batch(
+        self,
+        recipe_ids: list[str],
+        *,
+        include_interactions: bool = False,
+        include_images: bool = False,
+    ) -> list[RecipeDetailsResult]:
+        self.calls.recipe_details_batches.append((recipe_ids, include_interactions, include_images))
+        return [
+            RecipeDetailsResult(recipe_id=rid, details=await self.get_recipe_details(rid))
+            for rid in recipe_ids
+        ]
 
     async def get_recipe_images(self, recipe_id: str) -> list[RecipeImage]:
         base = f"https://assets.tmecosys.com/image/upload/t_full/img/{recipe_id}"
@@ -421,7 +436,6 @@ _PROTOCOL_GUARD: CookidoughSessionProtocol = FakeSession()
 
 @pytest.fixture(autouse=True)
 def _isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the developer's own ``.env`` and ``COOKIDOUGH_*`` variables out of the tests."""
     for key in [name for name in os.environ if name.startswith("COOKIDOUGH_")]:
         monkeypatch.delenv(key)
     monkeypatch.setitem(Settings.model_config, "env_file", None)

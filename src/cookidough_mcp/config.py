@@ -29,9 +29,9 @@ class Settings(BaseSettings):
 
     email: str = Field(
         min_length=3,
-        description="Cookidoo account email, or a phone number when country='cn'.",
+        description="Account email, or a phone number when country='cn'.",
     )
-    password: SecretStr = Field(description="Cookidoo account password.")
+    password: SecretStr = Field(description="Account password.")
     country: str = Field(
         default="de",
         min_length=2,
@@ -78,14 +78,14 @@ class Settings(BaseSettings):
 
     @property
     def is_china_market(self) -> bool:
-        """Whether this account lives on Cookidoo's separate China deployment."""
+        """Whether this account lives on the platform's separate China deployment."""
         return self.country_code == CHINA_COUNTRY_CODE
 
     @property
     def language_code(self) -> str:
         """Return language as a BCP-47 ``lang-REGION`` tag.
 
-        Cookidoo's locale lookup is case-sensitive — only ``de-DE`` matches,
+        The upstream locale lookup is case-sensitive — only ``de-DE`` matches,
         ``de`` and ``de-de`` do not. We canonicalize whatever the user
         provided so the documented short form (``de``) keeps working, while
         explicit BCP-47 tags (``de-DE``, ``en-GB``) survive unchanged.

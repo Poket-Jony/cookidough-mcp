@@ -28,19 +28,19 @@ def register(mcp: MCPServer) -> None:
         accessories: list[str] | None = None,
         sort_by: str | None = None,
     ) -> list[RecipeSearchResult]:
-        """Search the Cookidoo recipe library by keyword, optionally filtered.
+        """Search the recipe catalogue by keyword, optionally filtered.
 
         Returns up to ``limit`` (default 10, max 50) matching recipes sorted
-        by Cookidoo's own relevance ranking. The query is matched against the
+        by the platform's own relevance ranking. The query is matched against the
         configured locale (`COOKIDOUGH_COUNTRY` / `COOKIDOUGH_LANGUAGE`).
 
-        All filters are optional and follow the Cookidoo web search:
+        All filters are optional and follow the platform's web search:
         ``max_total_minutes`` caps the total time; ``difficulty`` is
         ``easy``/``medium``/``advanced``; ``ingredients`` /
         ``exclude_ingredients`` require/forbid ingredient names;
         ``min_rating`` keeps recipes rated at least that many stars (1-5);
         ``thermomix_version`` is ``TM5``/``TM6``/``TM7``; ``sort_by``
-        accepts Cookidoo sort keys (e.g. ``relevance``, ``rating``).
+        accepts the platform's sort keys (e.g. ``relevance``, ``rating``).
         """
         return await get_context(ctx).session.search_recipes(
             query,
@@ -66,7 +66,7 @@ def register(mcp: MCPServer) -> None:
     ) -> list[RecipeSuggestion]:
         """Suggest recipes by ingredient match, ranked by match score.
 
-        Without ``collection_ids`` the whole Cookidoo library is searched
+        Without ``collection_ids`` the whole recipe catalogue is searched
         (server-side ingredient filter, then locally re-ranked). With
         ``collection_ids`` only the recipes inside those collections are
         considered. Each result carries the match score (0.0-1.0), the
@@ -87,10 +87,10 @@ def register(mcp: MCPServer) -> None:
     async def get_recipe_recommendations(
         ctx: ToolContext, recipe_id: str | None = None, limit: int = 10
     ) -> list[RecipeSearchResult]:
-        """Get personalized recipe recommendations from Cookidoo.
+        """Get personalized recipe recommendations.
 
         Without ``recipe_id`` this returns the user's "For you" feed.
         With ``recipe_id`` it returns recipes similar to that one.
-        An empty list means Cookidoo had no recommendations available.
+        An empty list means the platform had no recommendations available.
         """
         return await get_context(ctx).session.get_recipe_recommendations(recipe_id, limit)

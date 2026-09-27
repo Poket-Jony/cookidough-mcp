@@ -39,7 +39,7 @@ from cookidoo_api.exceptions import (
 
 from .annotation_models import StepAnnotation
 from .annotations import AnnotationInferrer
-from .china_client import CHINA_LOCALIZATION, ChinaCookidoo
+from .china_client import CHINA_LOCALIZATION, ChinaClient
 from .constants import (
     CLOUDINARY_API_KEY,
     CLOUDINARY_UPLOAD_PRESET,
@@ -49,11 +49,11 @@ from .constants import (
     CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS,
     HTTP_TIMEOUT_SECONDS,
     MAX_RECIPE_IMAGE_BYTES,
+    RECIPE_FETCH_CONCURRENCY,
     SUGGEST_MIN_INGREDIENT_LENGTH,
-    SUGGEST_RECIPE_FETCH_CONCURRENCY,
     SUGGEST_SEARCH_CANDIDATE_FACTOR,
 )
-from .errors import AuthenticationError, NotFoundError, UpstreamApiError
+from .errors import AuthenticationError, NotFoundError, SessionClosedError, UpstreamApiError
 from .models import (
     AdditionalItemRename,
     CalendarDay,
@@ -72,6 +72,7 @@ from .models import (
     RecipeCategory,
     RecipeCollectionRef,
     RecipeDetails,
+    RecipeDetailsResult,
     RecipeImage,
     RecipeInstructionGroup,
     RecipeInstructionStep,
@@ -97,7 +98,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Cookidoo error bodies are diagnostic JSON that may echo back tokens, emails
+# Upstream error bodies are diagnostic JSON that may echo back tokens, emails
 # or other PII. We surface only a truncated, redacted excerpt to the caller.
 _ERROR_BODY_LIMIT = 200
 # ``\b`` anchors keep substrings like ``my_csrf`` or ``request_id_token`` from
@@ -117,7 +118,7 @@ _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 
 
 class CookidoughSessionProtocol(Protocol):
-    """Public surface of the Cookidoo session used by tools and tests.
+    """Public surface of the platform session used by tools and tests.
 
     Lifecycle methods (``__aenter__``/``__aexit__``) live on the concrete
     `CookidoughSession` only; the lifespan in `server.build_server` calls
@@ -128,6 +129,13 @@ class CookidoughSessionProtocol(Protocol):
     async def get_user_profile(self) -> UserProfile: ...
     async def get_subscription(self) -> Subscription | None: ...
     async def get_recipe_details(self, recipe_id: str) -> RecipeDetails: ...
+    async def get_recipe_details_batch(
+        self,
+        recipe_ids: list[str],
+        *,
+        include_interactions: bool = False,
+        include_images: bool = False,
+    ) -> list[RecipeDetailsResult]: ...
     async def get_recipe_images(self, recipe_id: str) -> list[RecipeImage]: ...
     async def get_custom_recipe_details(self, recipe_id: str) -> CustomRecipeDetails: ...
     async def list_managed_collections(self, page: int = 0) -> CollectionPage: ...
@@ -222,7 +230,7 @@ class CookidoughSessionProtocol(Protocol):
 
 
 class CookidoughSession:
-    """High-level repository for the Cookidoo platform.
+    """High-level repository for the recipe platform.
 
     Tools should always go through this class. The underlying ``cookidoo-api``
     client and any direct-HTTP fallbacks are hidden behind a stable interface
@@ -284,13 +292,13 @@ class CookidoughSession:
 
     async def _ensure_logged_in(self) -> Cookidoo:
         if self._closed:
-            raise UpstreamApiError("Session is closed.")
+            raise SessionClosedError("Session is closed.")
         if self._client is not None:
             return self._client
 
         async with self._login_lock:
             if self._closed:
-                raise UpstreamApiError("Session is closed.")
+                raise SessionClosedError("Session is closed.")
             if self._client is not None:
                 return self._client
 
@@ -303,7 +311,7 @@ class CookidoughSession:
                 matched = _match_localization(options, self._settings.language_code)
                 if matched is None:
                     raise AuthenticationError(
-                        f"No Cookidoo locale matches country={self._settings.country_code!r} "
+                        f"No platform locale matches country={self._settings.country_code!r} "
                         f"language={self._settings.language_code!r}."
                     )
                 localization = matched
@@ -321,7 +329,7 @@ class CookidoughSession:
             try:
                 client = self._build_client(http, localization)
                 if self._try_load_token(client):
-                    _LOGGER.info("Restored Cookidoo session token; skipping login.")
+                    _LOGGER.info("Restored session token; skipping login.")
                 else:
                     await client.login()
                     self._persist_token(client)
@@ -339,7 +347,7 @@ class CookidoughSession:
             self._client = client
             self._session_generation += 1
             _LOGGER.info(
-                "Authenticated as %s on Cookidoo (%s)",
+                "Authenticated as %s (%s)",
                 _redact_email(self._settings.email),
                 localization.url,
             )
@@ -354,7 +362,7 @@ class CookidoughSession:
         """
         async with self._login_lock:
             if self._closed:
-                raise UpstreamApiError("Session is closed.")
+                raise SessionClosedError("Session is closed.")
             if observed_generation != self._session_generation:
                 client = self._client
                 if client is None:
@@ -380,7 +388,7 @@ class CookidoughSession:
     ) -> Cookidoo:
         password = self._settings.password.get_secret_value()
         if self._settings.is_china_market:
-            return ChinaCookidoo(session=http, phone_number=self._settings.email, password=password)
+            return ChinaClient(session=http, phone_number=self._settings.email, password=password)
         return Cookidoo(
             session=http,
             cfg=CookidooConfig(
@@ -414,7 +422,7 @@ class CookidoughSession:
         except (OSError, CookidooConfigException) as e:
             # Persisting is an optimization; a read-only directory must
             # never break the login itself.
-            _LOGGER.warning("Could not persist Cookidoo token to %s: %s", path, e)
+            _LOGGER.warning("Could not persist the session token to %s: %s", path, e)
 
     async def _run[T](self, op: Callable[[Cookidoo], Awaitable[T]]) -> T:
         client = await self._ensure_logged_in()
@@ -466,6 +474,8 @@ class CookidoughSession:
     async def get_recipe_details(self, recipe_id: str) -> RecipeDetails:
         try:
             details = await self._run(lambda c: c.get_recipe_details(recipe_id))
+        except SessionClosedError:
+            raise
         except UpstreamApiError as e:
             # cookidoo-api lumps 404 and 5xx into the same exception. We
             # preserve the original message so the caller can tell missing
@@ -507,6 +517,58 @@ class CookidoughSession:
             ),
         )
 
+    async def get_recipe_details_batch(
+        self,
+        recipe_ids: list[str],
+        *,
+        include_interactions: bool = False,
+        include_images: bool = False,
+    ) -> list[RecipeDetailsResult]:
+        semaphore = asyncio.Semaphore(RECIPE_FETCH_CONCURRENCY)
+
+        async def _fetch(recipe_id: str) -> RecipeDetailsResult:
+            async with semaphore:
+                try:
+                    details = await self._enriched_recipe_details(
+                        recipe_id,
+                        include_interactions=include_interactions,
+                        include_images=include_images,
+                    )
+                except SessionClosedError:
+                    raise
+                except (NotFoundError, UpstreamApiError) as e:
+                    return RecipeDetailsResult(recipe_id=recipe_id, error=str(e))
+            return RecipeDetailsResult(recipe_id=recipe_id, details=details)
+
+        async with _cancelling_task_group() as group:
+            tasks = [group.create_task(_fetch(rid)) for rid in dict.fromkeys(recipe_ids)]
+        return [task.result() for task in tasks]
+
+    async def _enriched_recipe_details(
+        self, recipe_id: str, *, include_interactions: bool, include_images: bool
+    ) -> RecipeDetails:
+        async def _interactions() -> RecipeInteractions | None:
+            return await self.get_recipe_interactions(recipe_id) if include_interactions else None
+
+        async def _images() -> list[RecipeImage]:
+            if not include_images:
+                return []
+            try:
+                return await self.get_recipe_images(recipe_id)
+            except SessionClosedError:
+                raise
+            except (NotFoundError, UpstreamApiError) as e:
+                _LOGGER.warning("Images of recipe %s unavailable: %s", recipe_id, e)
+                return []
+
+        async with _cancelling_task_group() as group:
+            details = group.create_task(self.get_recipe_details(recipe_id))
+            interactions = group.create_task(_interactions())
+            images = group.create_task(_images())
+        return details.result().model_copy(
+            update={"interactions": interactions.result(), "images": images.result()}
+        )
+
     async def get_recipe_images(self, recipe_id: str) -> list[RecipeImage]:
         """Return every photo of a catalogue recipe (recipes carry several).
 
@@ -527,6 +589,8 @@ class CookidoughSession:
     async def get_custom_recipe_details(self, recipe_id: str) -> CustomRecipeDetails:
         try:
             recipe = await self._run(lambda c: c.get_custom_recipe(recipe_id))
+        except SessionClosedError:
+            raise
         except UpstreamApiError as e:
             raise NotFoundError(f"Custom recipe {recipe_id!r} not available: {e}") from e
         return CustomRecipeDetails(
@@ -793,7 +857,7 @@ class CookidoughSession:
         client = await self._ensure_logged_in()
         localization = client.localization
         origin = _localization_origin(localization.url)
-        # The Cookidoo search API isn't exposed by cookidoo-api, but the
+        # The platform's search API isn't exposed by cookidoo-api, but the
         # public web app hits the same /search/{language} endpoint.
         #
         # Encoding discipline: language goes into the path so reserved chars
@@ -808,7 +872,7 @@ class CookidoughSession:
             "countries": localization.country_code,
             "limit": limit,
         }
-        # Filter params mirror the Cookidoo web UI's /search query string:
+        # Filter params mirror the web app's /search query string:
         # totalTime in seconds, list values comma-joined, unset filters
         # omitted entirely.
         if max_total_minutes is not None:
@@ -871,23 +935,11 @@ class CookidoughSession:
         if not recipe_ids:
             return []
 
-        semaphore = asyncio.Semaphore(SUGGEST_RECIPE_FETCH_CONCURRENCY)
-
-        async def _fetch(rid: str) -> RecipeDetails | None:
-            async with semaphore:
-                try:
-                    return await self.get_recipe_details(rid)
-                except NotFoundError as e:
-                    # Custom-recipe IDs that slipped in via a custom collection
-                    # 404 here. That's expected; everything else (auth,
-                    # network) propagates so the caller sees the real problem.
-                    _LOGGER.debug("Skipping recipe %s during suggestion: %s", rid, e)
-                    return None
-
-        fetched = await asyncio.gather(*(_fetch(rid) for rid in recipe_ids))
+        fetched = await self.get_recipe_details_batch(recipe_ids)
 
         suggestions: list[RecipeSuggestion] = []
-        for details in fetched:
+        for result in fetched:
+            details = result.details
             if details is None:
                 continue
             ingredient_names = [i.name.lower().strip() for i in details.ingredients]
@@ -1051,12 +1103,12 @@ class CookidoughSession:
             )
         except TimeoutError as e:
             # Cancellation may have raced the POST: a stub *might* have been
-            # created on Cookidoo's side without our seeing the ID. We cannot
-            # roll it back. The user can clean up manually via the Cookidoo UI.
+            # created upstream without our seeing the ID. We cannot
+            # roll it back. The user can clean up manually via the web app.
             raise UpstreamApiError(
                 f"Custom recipe creation timed out after "
                 f"{CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS:.0f} s; "
-                f"check the Cookidoo UI for an orphaned draft named {draft.name!r}."
+                f"check the web app for an orphaned draft named {draft.name!r}."
             ) from e
 
         _LOGGER.info("upload_custom_recipe: stub %s created; PATCHing content", recipe_id)
@@ -1085,7 +1137,7 @@ class CookidoughSession:
             except TimeoutError:
                 _LOGGER.warning(
                     "Rollback of custom recipe stub %s timed out; "
-                    "the draft may be orphaned in Cookidoo.",
+                    "the draft may be orphaned upstream.",
                     recipe_id,
                 )
             raise
@@ -1118,7 +1170,7 @@ class CookidoughSession:
             raise UpstreamApiError(
                 f"Custom recipe update timed out after "
                 f"{CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS:.0f} s; the recipe "
-                f"{recipe_id!r} may be partially updated — verify it in the Cookidoo UI."
+                f"{recipe_id!r} may be partially updated — verify it in the web app."
             ) from e
         public_url = await self._custom_recipe_public_url(recipe_id)
         return recipe_id, public_url
@@ -1128,15 +1180,15 @@ class CookidoughSession:
     ) -> CustomRecipeImageResult:
         """Upload a photo for a custom recipe (path or http(s) URL).
 
-        Global flow verified live (2026-06-05): Cookidoo signs the upload
+        Global flow verified live (2026-06-05): the platform signs the upload
         params, the file goes directly to Vorwerk's Cloudinary tenant, and the
         returned public id is PATCHed onto the recipe. Each upload yields a
-        fresh asset — Cookidoo rejects reusing an asset across recipes. China
+        fresh asset — the platform rejects reusing an asset across recipes. China
         instead uploads to Tencent COS and waits for moderation.
         """
         image_bytes, content_type = await self._load_image_bytes(image_source)
         client = await self._ensure_logged_in()
-        if isinstance(client, ChinaCookidoo):
+        if isinstance(client, ChinaClient):
             body = await self._china_image_body(client, image_bytes, content_type)
         else:
             body = await self._cloudinary_image_body(image_bytes, content_type)
@@ -1144,8 +1196,8 @@ class CookidoughSession:
         async with self._authed_http("PATCH", url, json_body=body) as response:
             await response.read()
         details = await self.get_custom_recipe_details(recipe_id)
-        if isinstance(client, ChinaCookidoo) and str(body["image"]) not in (details.image or ""):
-            raise UpstreamApiError("China Cookidoo did not persist the uploaded recipe image.")
+        if isinstance(client, ChinaClient) and str(body["image"]) not in (details.image or ""):
+            raise UpstreamApiError("China did not persist the uploaded recipe image.")
         return CustomRecipeImageResult(
             recipe_id=recipe_id,
             image=details.image,
@@ -1162,7 +1214,7 @@ class CookidoughSession:
         return {"image": f"{public_id}.{image_format}", "isImageOwnedByUser": True}
 
     async def _china_image_body(
-        self, client: ChinaCookidoo, image_bytes: bytes, content_type: str
+        self, client: ChinaClient, image_bytes: bytes, content_type: str
     ) -> dict[str, Any]:
         image_id = await client.upload_recipe_image(image_bytes, content_type)
         return {
@@ -1188,7 +1240,7 @@ class CookidoughSession:
             payload = await _parse_json(response)
         signature = payload.get("signature") if isinstance(payload, dict) else None
         if not isinstance(signature, str) or not signature:
-            raise UpstreamApiError("Cookidoo did not return an image upload signature.")
+            raise UpstreamApiError("Upstream did not return an image upload signature.")
         return signature
 
     async def _load_image_bytes(self, image_source: str) -> tuple[bytes, str]:
@@ -1215,14 +1267,14 @@ class CookidoughSession:
             data = await _parse_json(response)
         recipe_id = data.get("recipeId") if isinstance(data, dict) else None
         if not isinstance(recipe_id, str) or not recipe_id:
-            raise UpstreamApiError("Cookidoo did not return a usable recipeId.")
+            raise UpstreamApiError("Upstream did not return a usable recipeId.")
         return recipe_id
 
     async def _patch_custom_recipe(self, recipe_id: str, draft: CustomRecipeDraft) -> None:
         url = f"{await self._custom_recipes_url()}/{recipe_id}"
         payload = _draft_to_payload(draft)
         if self._settings.is_china_market:
-            payload = ChinaCookidoo.update_payload(payload)
+            payload = ChinaClient.update_payload(payload)
         async with self._authed_http("PATCH", url, json_body=payload) as response:
             # Drain the body so the connection can be safely returned to the
             # keep-alive pool. The PATCH response itself is not consumed.
@@ -1235,7 +1287,7 @@ class CookidoughSession:
         with suppress(CookidooException, UpstreamApiError, AuthenticationError):
             await self.delete_custom_recipe(recipe_id)
 
-    # Recipe interactions: undocumented Cookidoo endpoints, not exposed by
+    # Recipe interactions: undocumented platform endpoints, not exposed by
     # cookidoo-api. Methods and payload shapes verified against the live API
     # (2026-06-05); parsers stay tolerant so an upstream change degrades a
     # single value instead of the whole call.
@@ -1359,6 +1411,8 @@ class CookidoughSession:
         try:
             async with self._authed_http(method, url) as response:
                 return await _parse_json(response)
+        except SessionClosedError:
+            raise
         except (NotFoundError, UpstreamApiError) as e:
             _LOGGER.debug("Ignoring failed %s %s: %s", method, url, e)
             return None
@@ -1441,19 +1495,19 @@ class CookidoughSession:
 
         try:
             if response.status == 401 and retried_after_relogin:
-                raise AuthenticationError(f"Cookidoo {method} {url} still 401 after re-login.")
+                raise AuthenticationError(f"Upstream {method} {url} still 401 after re-login.")
             if response.status == 404:
                 # Surface 404 as NotFoundError so the tool layer can treat a
                 # missing resource consistently with the cookidoo-api-backed
                 # paths (see ``get_recipe_details`` / ``get_custom_recipe_details``).
                 body = await response.text()
                 raise NotFoundError(
-                    f"Cookidoo {method} {url} returned 404: {_redact_error_body(body)}"
+                    f"Upstream {method} {url} returned 404: {_redact_error_body(body)}"
                 )
             if response.status >= 400:
                 body = await response.text()
                 raise UpstreamApiError(
-                    f"Cookidoo {method} {url} returned {response.status}: "
+                    f"Upstream {method} {url} returned {response.status}: "
                     f"{_redact_error_body(body)}"
                 )
             yield response
@@ -1466,7 +1520,7 @@ def _match_localization(
 ) -> CookidooLocalizationConfig | None:
     """Find the localization for ``wanted``, tolerating non-canonical tags.
 
-    Cookidoo does not publish every market under a ``lang-REGION`` tag: Poland
+    The platform does not publish every market under a ``lang-REGION`` tag: Poland
     and Czechia use a bare ``pl``/``cs``, and Chinese carries a script subtag
     (``zh-Hans``). Matching the canonical tag that `Settings.language_code`
     builds would leave those markets unreachable, so fall back to the primary
@@ -1530,7 +1584,7 @@ async def _upload_image_to_cloudinary(
 ) -> tuple[str, str]:
     """Upload the image to Vorwerk's Cloudinary tenant; return (public_id, format).
 
-    Runs on a dedicated plain session — the Cookidoo cookie jar must never
+    Runs on a dedicated plain session — the platform's cookie jar must never
     reach a third-party host.
     """
     form = FormData()
@@ -1572,14 +1626,14 @@ async def _safe_send(
     try:
         return await sender()
     except ClientError as e:
-        raise UpstreamApiError(f"Cookidoo {method} {url} failed: {e}") from e
+        raise UpstreamApiError(f"Upstream {method} {url} failed: {e}") from e
 
 
 async def _parse_json(response: ClientResponse) -> Any:
     try:
         return await response.json(content_type=None)
     except (ClientError, ValueError) as e:
-        raise UpstreamApiError(f"Cookidoo returned non-JSON payload: {e}") from e
+        raise UpstreamApiError(f"Upstream returned non-JSON payload: {e}") from e
 
 
 def _coerce_iso_date(value: str) -> date | None:
@@ -1590,7 +1644,7 @@ def _coerce_iso_date(value: str) -> date | None:
 
 
 def _nutrition_to_dtos(nutrition_groups: Any) -> list[NutritionInfo]:
-    """Flatten Cookidoo's nested nutrition groups into one entry per quantity.
+    """Flatten the nested upstream nutrition groups into one entry per quantity.
 
     Upstream shape: ``nutrition_groups[].recipe_nutritions[].nutritions[]``.
     Each ``recipe_nutritions`` row carries the serving quantity its values
@@ -1617,6 +1671,15 @@ def _nutrition_to_dtos(nutrition_groups: Any) -> list[NutritionInfo]:
                 )
             )
     return result
+
+
+@asynccontextmanager
+async def _cancelling_task_group() -> AsyncIterator[asyncio.TaskGroup]:
+    try:
+        async with asyncio.TaskGroup() as group:
+            yield group
+    except ExceptionGroup as failures:
+        raise failures.exceptions[0] from None
 
 
 def _instruction_groups_to_dtos(groups: Any, language: str) -> list[RecipeInstructionGroup]:
@@ -1659,9 +1722,9 @@ def _calendar_to_dto(day: Any) -> CalendarDay:
             )
             for r in day.recipes
         ],
-        # Upstream calls these "customer_recipe_ids" (Cookidoo's own typo for
+        # Upstream calls these "customer_recipe_ids" (the platform's own typo for
         # "custom"). We expose them under the corrected name in our DTO and
-        # also accept the corrected upstream name in case Cookidoo ever fixes
+        # also accept the corrected upstream name in case the platform ever fixes
         # the typo on their side without an announcement.
         custom_recipe_ids=list(
             getattr(day, "customer_recipe_ids", None)
@@ -1675,9 +1738,9 @@ _ISO_DURATION_PATTERN = re.compile(r"^PT(?=\d)(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$
 
 
 def _parse_duration_seconds(value: Any) -> int | None:
-    """Coerce Cookidoo's time fields into total seconds.
+    """Coerce the upstream time fields into total seconds.
 
-    Cookidoo's `/created-recipes` listing returns `totalTime`/`prepTime`
+    The `/created-recipes` listing returns `totalTime`/`prepTime`
     as ISO-8601 duration strings (`"PT35M"`) since approx. 2026-05.
     Older traffic — and our own integration tests — still use raw integer
     seconds, so accept both.
@@ -1797,7 +1860,7 @@ def _first_number(payload: Any, keys: tuple[str, ...]) -> float | None:
     """Pull the first numeric value found under any of ``keys``.
 
     The interaction endpoints are undocumented; key candidates cover the
-    naming conventions observed across Cookidoo's other APIs. One level of
+    naming conventions observed across the platform's other APIs. One level of
     nesting under a same-named wrapper (``{"rating": {"value": 4}}``) is
     unwrapped before giving up.
     """
@@ -2002,7 +2065,7 @@ def _custom_recipe_item_to_dto(item: Any) -> CustomRecipeSummary | None:
 
 
 def _localization_origin(url: str) -> str:
-    """Normalize Cookidoo's localization URL down to a clean ``scheme://host`` origin.
+    """Normalize the upstream localization URL down to a clean ``scheme://host`` origin.
 
     Upstream sometimes returns a fully-qualified URL (``https://cookidoo.de/...``)
     and sometimes a bare host (``cookidoo.de``); we always emit ``https://host``
@@ -2013,9 +2076,9 @@ def _localization_origin(url: str) -> str:
     if not parsed.scheme:
         parsed = urlsplit(f"https://{url}")
     if parsed.scheme not in _ALLOWED_URL_SCHEMES:
-        raise UpstreamApiError(f"Refusing non-HTTP Cookidoo localization scheme: {parsed.scheme!r}")
+        raise UpstreamApiError(f"Refusing non-HTTP localization scheme: {parsed.scheme!r}")
     if not parsed.netloc:
-        raise UpstreamApiError(f"Unparseable Cookidoo localization URL: {url!r}")
+        raise UpstreamApiError(f"Unparseable localization URL: {url!r}")
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
@@ -2029,7 +2092,7 @@ def _redact_email(email: str) -> str:
 
 
 def _redact_error_body(body: str) -> str:
-    """Strip likely-sensitive tokens from a Cookidoo error response body.
+    """Strip likely-sensitive tokens from an upstream error response body.
 
     Three passes:
     1. Key/value pairs (``"access_token": "abc"``, ``authorization=Bearer xyz``)
@@ -2065,7 +2128,7 @@ def _draft_to_payload(
         "tools": list(draft.tools),
         "yield": {"value": draft.servings, "unitText": "portion"},
         "prepTime": draft.prep_minutes * 60,
-        # Cookidoo's UI separates prep, cook and total time but our draft model
+        # The web app separates prep, cook and total time but our draft model
         # only carries prep + total. ``CustomRecipeDraft`` validates total>=prep
         # at construction time so ``cookTime`` is always non-negative.
         "cookTime": (draft.total_minutes - draft.prep_minutes) * 60,

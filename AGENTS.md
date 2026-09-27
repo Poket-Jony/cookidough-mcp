@@ -8,7 +8,7 @@ here.
 ## Project overview
 
 `cookidough-mcp` is a Model Context Protocol (MCP) server that exposes the
-Thermomix [Cookidoo](https://cookidoo.de) platform to LLM clients (Claude
+Thermomix® [Cookidoo®](https://cookidoo.de) platform to LLM clients (Claude
 Desktop, Claude Code, any MCP-aware tool). It consolidates four predecessor
 projects into a single Python 3.12+ codebase (tested through 3.14) built
 on the **MCP Python SDK** (`MCPServer`, mcp 2.x) and the
@@ -105,12 +105,12 @@ src/cookidough_mcp/
 ├── errors.py        # Domain exception hierarchy
 ├── models.py        # Pydantic DTOs for every tool I/O
 ├── session.py       # Repository facade over cookidoo-api + custom HTTP
-├── china_client.py  # Cookidoo client for the mainland-China deployment
+├── china_client.py  # Platform client for the mainland-China deployment
 ├── transport.py     # Stdio / HTTP transport strategies
-├── quality.py            # Thermomix recipe quality rule strategy set
+├── quality.py            # Recipe quality rule strategy set
 ├── annotation_models.py  # Guided-cooking annotation DTOs (discriminated union)
 ├── annotations.py        # Annotation inferrer (text patterns → StepAnnotation)
-├── step_text.py          # formattedText → plain text (markup, Thermomix icons)
+├── step_text.py          # formattedText → plain text (markup, appliance icons)
 ├── web_import.py         # recipe-scrapers adapter → CustomRecipeDraft
 ├── resources.py          # MCP resources + prompts (read-only context, workflows)
 ├── server.py        # MCPServer instance + lifespan
@@ -123,7 +123,7 @@ src/cookidough_mcp/
   `cookidoo_api`. Tools always go through the `CookidoughSessionProtocol`
   interface. `china_client.py` is exempt because it subclasses the upstream
   client; keep every other module free of that import.
-- `ChinaCookidoo` overrides only the four CIAM-specific steps (discovery,
+- `ChinaClient` overrides only the four CIAM-specific steps (discovery,
   origin guard, login form, credential POST) and reuses the base class for
   PKCE, the code exchange and token storage. It must end a login with real
   tokens: `_ensure_token` gates all 42 `cookidoo-api` methods, so a
@@ -162,7 +162,7 @@ src/cookidough_mcp/
   login-srv), and the default jar drops those cookies.
 - The interaction endpoints (rating, bookmark, recipe-notes,
   cooking-history, recommender, customer-devices) are **undocumented**
-  Cookidoo APIs discovered via the platform's `.well-known/home` document.
+  platform APIs discovered via its `.well-known/home` document.
   Methods and payload shapes were verified live on 2026-06-05 (see
   `tests/smoke/smoke_test.py`); parsers in `session.py` must still
   tolerate missing fields and degrade to `None`/empty instead of raising,
@@ -179,7 +179,7 @@ src/cookidough_mcp/
 
 ## Security considerations
 
-- The Cookidoo password is stored as `pydantic.SecretStr` and never logged.
+- The account password is stored as `pydantic.SecretStr` and never logged.
 - The login banner logs a **redacted email** (`a***@example.com`), never the
   full address.
 - All upstream error bodies pass through `_redact_error_body` before being
@@ -202,7 +202,7 @@ src/cookidough_mcp/
 - `set_custom_recipe_image` uploads the image bytes directly to Vorwerk's
   Cloudinary tenant (third-party egress, same as the official web app).
   The upload runs on a dedicated plain `aiohttp.ClientSession` — the
-  Cookidoo cookie jar must NEVER be sent to that host. URL sources are
+  platform cookie jar must NEVER be sent to that host. URL sources are
   restricted to http/https and capped at `MAX_RECIPE_IMAGE_BYTES`.
 
 ## Dev environment tips

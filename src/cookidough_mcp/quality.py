@@ -1,4 +1,4 @@
-"""Thermomix guided-cooking quality scoring.
+"""Guided-cooking recipe quality scoring.
 
 Each `QualityRule` evaluates a `CustomRecipeDraft` and emits `QualityIssue`s
 with a per-rule weight. The aggregate score is ``max(0, 100 - sum(weights))``.
@@ -29,7 +29,7 @@ _TIME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 # Speed indicator. Accepts the canonical ``Stufe N`` / ``speed N`` form as
-# well as the compound shorthands that Cookidoo also emits in step text:
+# well as the compound shorthands that the platform also emits in step text:
 # ``Sanftrührstufe`` (soft mode), ``Teigstufe`` / ``Knetstufe`` (dough mode).
 # Kept in sync with the inferrer's TTS / dough patterns so the quality gate
 # does not penalise wording that the inferrer would happily annotate.
@@ -83,7 +83,7 @@ class RuleResult:
 
 
 class QualityRule(ABC):
-    """A single Thermomix recipe quality heuristic."""
+    """A single recipe quality heuristic."""
 
     name: ClassVar[str]
     weight: ClassVar[int]
@@ -182,7 +182,7 @@ class AccessoryRule(QualityRule):
                     rule=self.name,
                     severity=QualityIssueSeverity.WARNING,
                     message=(
-                        "No Thermomix accessory (butterfly, simmering basket, "
+                        "No appliance accessory (butterfly, simmering basket, "
                         "Varoma, spatula) is referenced. Consider naming the "
                         "tool used in each step for clearer guided cooking."
                     ),

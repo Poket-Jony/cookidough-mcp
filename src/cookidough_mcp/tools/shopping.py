@@ -37,7 +37,7 @@ def register(mcp: MCPServer) -> None:
     ) -> str:
         """Add recipe ingredients to the shopping list (two modes).
 
-        Pass EITHER ``recipe_ids`` (add the ingredients of those Cookidoo
+        Pass EITHER ``recipe_ids`` (add the ingredients of those catalogue
         recipes) OR ``from_date`` + ``to_date`` (add every recipe planned in
         the calendar within that inclusive range — max 4 weeks — including
         custom recipes, deduplicated across days).

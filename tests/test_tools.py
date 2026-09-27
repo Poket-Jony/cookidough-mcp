@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 from mcp.server.mcpserver import MCPServer
 
+from cookidough_mcp.constants import MAX_RECIPE_DETAILS_PER_CALL
 from cookidough_mcp.context import AppContext
 from cookidough_mcp.errors import QualityGateError, UpstreamApiError
 from cookidough_mcp.models import (
@@ -20,6 +21,7 @@ from cookidough_mcp.models import (
 from cookidough_mcp.tools import register_all
 
 from ._mcp_internals import get_tool_fn as _tool_fn
+from ._mcp_internals import get_tool_parameters
 
 
 def _steps(*texts: str) -> list[RecipeStep]:
@@ -61,9 +63,21 @@ async def test_get_subscription_returns_active(
     assert sub.active is True
 
 
-async def test_get_recipe_details(registered_mcp: MCPServer, fake_mcp_context: Any) -> None:
-    details = await _tool_fn(registered_mcp, "get_recipe_details")(fake_mcp_context, recipe_id="r1")
-    assert details.id == "r1"
+async def test_get_recipe_details(
+    registered_mcp: MCPServer, fake_mcp_context: Any, fake_session: Any
+) -> None:
+    results = await _tool_fn(registered_mcp, "get_recipe_details")(
+        fake_mcp_context, recipe_ids=["r1", "r2"], include_images=True
+    )
+    assert [r.details.id for r in results] == ["r1", "r2"]
+    assert fake_session.calls.recipe_details_batches == [(["r1", "r2"], False, True)]
+
+
+def test_get_recipe_details_announces_the_id_bounds(registered_mcp: MCPServer) -> None:
+    schema = get_tool_parameters(registered_mcp, "get_recipe_details")["properties"]["recipe_ids"]
+    assert schema["minItems"] == 1
+    assert schema["maxItems"] == MAX_RECIPE_DETAILS_PER_CALL
+    assert schema["items"]["minLength"] == 1
 
 
 async def test_list_managed_collections(registered_mcp: MCPServer, fake_mcp_context: Any) -> None:
@@ -443,20 +457,6 @@ async def test_set_recipe_interactions_reports_partial_failures(
     assert fake_session.calls.set_bookmark == [("r1", True)]
 
 
-async def test_get_recipe_details_with_interactions(
-    registered_mcp: MCPServer, fake_mcp_context: Any
-) -> None:
-    details = await _tool_fn(registered_mcp, "get_recipe_details")(
-        fake_mcp_context, recipe_id="r1", include_interactions=True
-    )
-    assert details.interactions is not None
-    assert details.interactions.own_rating == 4
-    assert details.interactions.note == "Weniger Salz nehmen."
-
-    plain = await _tool_fn(registered_mcp, "get_recipe_details")(fake_mcp_context, recipe_id="r1")
-    assert plain.interactions is None
-
-
 async def test_get_recipe_recommendations_tool(
     registered_mcp: MCPServer, fake_mcp_context: Any, fake_session: Any
 ) -> None:
@@ -496,31 +496,6 @@ async def test_set_custom_recipe_image_tool(
     assert result.recipe_id == "cr1"
     assert result.image is not None
     assert fake_session.calls.set_image == [("cr1", "/tmp/photo.jpg")]
-
-
-async def test_get_recipe_details_with_images(
-    registered_mcp: MCPServer, fake_mcp_context: Any
-) -> None:
-    details = await _tool_fn(registered_mcp, "get_recipe_details")(
-        fake_mcp_context, recipe_id="r1", include_images=True
-    )
-    assert len(details.images) == 2
-    assert details.images[0].square is not None
-    assert details.interactions is None  # not requested
-
-    plain = await _tool_fn(registered_mcp, "get_recipe_details")(fake_mcp_context, recipe_id="r1")
-    assert plain.images == []
-
-
-async def test_get_recipe_details_with_images_and_interactions(
-    registered_mcp: MCPServer, fake_mcp_context: Any
-) -> None:
-    details = await _tool_fn(registered_mcp, "get_recipe_details")(
-        fake_mcp_context, recipe_id="r1", include_images=True, include_interactions=True
-    )
-    assert len(details.images) == 2
-    assert details.interactions is not None
-    assert details.interactions.own_rating == 4
 
 
 async def test_set_recipe_interactions_marks_custom_recipe_cooked(

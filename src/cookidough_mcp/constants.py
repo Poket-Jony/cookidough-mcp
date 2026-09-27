@@ -6,22 +6,22 @@ each constant's comment for the reasoning behind its value.
 
 from typing import Final, Literal
 
-# Thermomix device generations that Cookidoo accepts in the recipe ``tools``
+# Device generations that the platform accepts in the recipe ``tools``
 # field. The field is a compatibility list (which TM models the recipe is
 # designed for), not a list of accessories. Only these three tokens are valid
-# in the wire payload — anything else is silently dropped by Cookidoo and
+# in the wire payload — anything else is silently dropped upstream and
 # excludes the recipe from model-specific filters.
-ThermomixTool = Literal["TM5", "TM6", "TM7"]
+DeviceModel = Literal["TM5", "TM6", "TM7"]
 
-DEFAULT_THERMOMIX_TOOLS: Final[tuple[ThermomixTool, ...]] = ("TM7", "TM6", "TM5")
+DEFAULT_DEVICE_MODELS: Final[tuple[DeviceModel, ...]] = ("TM7", "TM6", "TM5")
 
-# Cookidoo's `/created-recipes/{locale}` endpoint is eventually consistent: a
+# The `/created-recipes/{locale}` endpoint is eventually consistent: a
 # PATCH issued immediately after the POST tends to race the backend's draft
 # materialization. Empirically 3 s is enough to make the PATCH succeed reliably
 # without a polling loop. Bump this if 5xx errors start appearing again.
 CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS: Final[float] = 3.0
 
-# Hard upper bound for any single HTTP call against Cookidoo. The MCP transport
+# Hard upper bound for any single upstream HTTP call. The MCP transport
 # layer expects tool calls to return promptly; without an explicit timeout
 # aiohttp would inherit a 5-minute default that masquerades as a hung tool.
 HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
@@ -34,12 +34,12 @@ HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
 # bails out fast when something is actually wrong.
 CUSTOM_RECIPE_OPERATION_TIMEOUT_SECONDS: Final[float] = 60.0
 
-# Maximum number of concurrent recipe-detail fetches issued by
-# ``suggest_recipes_from_ingredients``. Larger collections would otherwise
-# serialize N HTTP round-trips through ``get_recipe_details`` and easily blow
-# past the MCP client's tool-call timeout. 5 keeps per-call latency low without
-# hammering the Cookidoo API.
-SUGGEST_RECIPE_FETCH_CONCURRENCY: Final[int] = 5
+# Maximum number of concurrent recipe-detail fetches in one batch. Serial
+# round-trips easily blow past the MCP client's tool-call timeout; 5 keeps
+# per-call latency low without hammering the upstream API.
+RECIPE_FETCH_CONCURRENCY: Final[int] = 5
+
+MAX_RECIPE_DETAILS_PER_CALL: Final[int] = 20
 
 # Minimum length of an ``available_ingredients`` token in the suggestion tool.
 # The matcher uses a bidirectional ``substring`` containment which trivially
@@ -60,7 +60,7 @@ SUGGEST_SEARCH_CANDIDATE_FACTOR: Final[int] = 3
 CALENDAR_SHOPPING_MAX_RANGE_DAYS: Final[int] = 28
 
 # Custom-recipe image upload (verified against the live flow, 2026-06-05):
-# Cookidoo signs {timestamp, upload_preset, source} via its /image/signature
+# The platform signs {timestamp, upload_preset, source} via its /image/signature
 # endpoint, the file goes directly to Vorwerk's Cloudinary tenant, and the
 # returned public_id is PATCHed onto the recipe. The api_key is Cloudinary's
 # public identifier for that tenant — not a secret.
@@ -71,7 +71,7 @@ CLOUDINARY_UPLOAD_PRESET: Final[str] = "prod-customer-recipe-signed"
 CLOUDINARY_UPLOAD_SOURCE: Final[str] = "uw"
 CLOUDINARY_API_KEY: Final[str] = "993585863591145"
 
-# Upload cap for recipe images. Cookidoo's own web client accepts photos in
+# Upload cap for recipe images. The platform's own web client accepts photos in
 # this range; the moderation pipeline additionally requires >=80px per side.
 MAX_RECIPE_IMAGE_BYTES: Final[int] = 10 * 1024 * 1024
 

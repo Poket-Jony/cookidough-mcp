@@ -38,7 +38,7 @@ def register(mcp: MCPServer) -> None:
     ) -> CalendarDay:
         """Schedule one or more **custom** recipes for the given date.
 
-        Use ``add_recipes_to_calendar`` for regular Cookidoo recipes; this
+        Use ``add_recipes_to_calendar`` for regular catalogue recipes; this
         endpoint targets the user's own custom recipes (those listed by
         ``list_custom_recipes``).
         """

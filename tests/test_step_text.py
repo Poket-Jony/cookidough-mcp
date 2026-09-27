@@ -1,11 +1,10 @@
-"""Plain-text rendering of Cookidoo's ``formattedText`` recipe steps."""
+"""Plain-text rendering of the ``formattedText`` catalogue recipe steps."""
 
 import logging
 
 import pytest
 
 from cookidough_mcp.step_text import (
-    DOUGH_MODE_GLYPH,
     REVERSE_BLADE_GLYPH,
     SOFT_SPEED_GLYPH,
     plain_step_text,
@@ -30,16 +29,39 @@ def test_soft_speed_glyph_keeps_the_space_before_it() -> None:
     assert plain_step_text(formatted, "fr-FR") == "cuire 5 min/120°C/vitesse mijotage."
 
 
-def test_dough_mode_glyph_is_dropped_with_its_leading_space() -> None:
-    formatted = f"activez le mode <nobr>Pétrin {DOUGH_MODE_GLYPH}/40 sec</nobr>."
-    assert plain_step_text(formatted, "fr-FR") == "activez le mode Pétrin/40 sec."
+@pytest.mark.parametrize(
+    ("formatted", "language", "expected"),
+    [
+        (
+            "activez le mode <nobr>Pétrin \ue001/40 sec</nobr>.",
+            "fr-FR",
+            "activez le mode Pétrin/40 sec.",
+        ),
+        (
+            "Zucker zugeben, <nobr>Anbraten \ue026</nobr> und umfüllen.",
+            "de-DE",
+            "Zucker zugeben, Anbraten und umfüllen.",
+        ),
+        (
+            "Nudeln vermischen und <nobr>Slow Cooking \ue018/40 Min./95°C</nobr>.",
+            "de-DE",
+            "Nudeln vermischen und Slow Cooking/40 Min./95°C.",
+        ),
+    ],
+)
+def test_mode_glyph_is_dropped_silently_with_its_leading_space(
+    formatted: str, language: str, expected: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        assert plain_step_text(formatted, language) == expected
+    assert not caplog.records
 
 
-def test_unknown_private_use_glyph_is_dropped_and_logged(
+def test_unknown_glyph_outside_a_mode_position_is_dropped_and_logged(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     with caplog.at_level(logging.WARNING):
-        assert plain_step_text("versez \ue0ff la crème") == "versez la crème"
+        assert plain_step_text("mixez 30 sec/\ue0ff/vitesse 5") == "mixez 30 sec//vitesse 5"
     assert "U+E0FF" in caplog.text
 
 

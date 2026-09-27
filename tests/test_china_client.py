@@ -13,7 +13,7 @@ from cookidoo_api.exceptions import (
 )
 from pydantic import SecretStr
 
-from cookidough_mcp.china_client import ChinaCookidoo
+from cookidough_mcp.china_client import ChinaClient
 from cookidough_mcp.config import Settings
 from cookidough_mcp.errors import UpstreamApiError
 from cookidough_mcp.models import CustomRecipeDetails
@@ -117,8 +117,8 @@ def _oidc_routes(code_location: str) -> list[tuple[str, _FakeResponse]]:
     ]
 
 
-def _client(routes: list[tuple[str, _FakeResponse]]) -> ChinaCookidoo:
-    return ChinaCookidoo(
+def _client(routes: list[tuple[str, _FakeResponse]]) -> ChinaClient:
+    return ChinaClient(
         session=_FakeSession(routes),  # type: ignore[arg-type]
         phone_number="13800000000",
         password="pw",
@@ -182,7 +182,7 @@ async def test_login_refuses_a_redirect_off_the_china_ciam_host(
 
 
 def test_extract_login_form_returns_action_and_state() -> None:
-    action, state = ChinaCookidoo.extract_login_form(_LOGIN_HTML, "https://cookidoo.com.cn")
+    action, state = ChinaClient.extract_login_form(_LOGIN_HTML, "https://cookidoo.com.cn")
 
     assert action == "https://cookidoo.com.cn/oidc/auth/login/loginbyphone?type=phonenumberLogin"
     assert state == "state-123"
@@ -190,7 +190,7 @@ def test_extract_login_form_returns_action_and_state() -> None:
 
 def test_extract_login_form_rejects_a_page_without_state() -> None:
     with pytest.raises(CookidooParseException, match="login_auth_state"):
-        ChinaCookidoo.extract_login_form(
+        ChinaClient.extract_login_form(
             '<form action="/oidc/auth/login/loginbyphone"></form>', "https://cookidoo.com.cn"
         )
 
@@ -226,7 +226,7 @@ def test_normalize_custom_recipe_maps_china_field_names() -> None:
         },
     }
 
-    content = ChinaCookidoo.normalize_custom_recipe(payload)["recipeContent"]
+    content = ChinaClient.normalize_custom_recipe(payload)["recipeContent"]
 
     assert content["ingredients"] == ["300 g rice"]
     assert content["instructions"] == ["Blend until smooth."]
@@ -280,7 +280,7 @@ def test_update_payload_keeps_guided_annotations() -> None:
         "instructions": [{"type": "STEP", "text": "Blend", "annotations": [annotation]}],
     }
 
-    converted = ChinaCookidoo.update_payload(payload)
+    converted = ChinaClient.update_payload(payload)
 
     assert converted["instructions"][0]["annotations"] == [annotation]
     assert converted["recipeMetadata"] == {}
@@ -316,7 +316,7 @@ async def test_image_upload_reports_a_moderation_rejection(
             ("audit/img", _FakeResponse(json_data={"status": "Fail"})),
         ]
     )
-    monkeypatch.setattr(ChinaCookidoo, "_put_to_cos", _noop_put)
+    monkeypatch.setattr(ChinaClient, "_put_to_cos", _noop_put)
     monkeypatch.setattr("asyncio.sleep", _instant_sleep)
 
     with pytest.raises(CookidooRequestException, match="rejected"):

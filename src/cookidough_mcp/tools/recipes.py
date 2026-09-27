@@ -1,6 +1,6 @@
 """Recipe tools: lookup, custom-recipe lifecycle, and web import.
 
-Combines public Cookidoo recipes (``get_recipe_details``) with the full
+Combines public catalogue recipes (``get_recipe_details``) with the full
 custom-recipe workflow (``generate`` → ``validate`` → ``upload``, plus list /
 delete and the recipe-scrapers-backed ``import_web_recipe``). All tools in
 this module live under the "Recipes" section in the README's tool reference.
@@ -8,10 +8,11 @@ this module live under the "Recipes" section in the README's tool reference.
 
 from __future__ import annotations
 
-import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
-from ..constants import ThermomixTool
+from pydantic import Field
+
+from ..constants import MAX_RECIPE_DETAILS_PER_CALL, DeviceModel
 from ..context import AppContext, ToolContext, get_context
 from ..errors import QualityGateError
 from ..models import (
@@ -20,9 +21,7 @@ from ..models import (
     CustomRecipeImageResult,
     CustomRecipeSummary,
     QualityReport,
-    RecipeDetails,
-    RecipeImage,
-    RecipeInteractions,
+    RecipeDetailsResult,
     RecipeStep,
     UploadResult,
     WebImportResult,
@@ -36,45 +35,34 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool()
     async def get_recipe_details(
         ctx: ToolContext,
-        recipe_id: str,
+        recipe_ids: Annotated[
+            list[Annotated[str, Field(min_length=1)]],
+            Field(min_length=1, max_length=MAX_RECIPE_DETAILS_PER_CALL),
+        ],
         include_interactions: bool = False,
         include_images: bool = False,
-    ) -> RecipeDetails:
-        """Fetch full details of a Cookidoo recipe by its ID.
+    ) -> list[RecipeDetailsResult]:
+        """Fetch full details of one or more catalogue recipes by ID.
 
-        ``instructions`` holds the cooking steps in Cookidoo's own groups
-        (dough, filling, ...) as plain text, with the Thermomix icons spelled
+        Pass every recipe you need in one call. Each entry carries either
+        ``details`` or an ``error`` (e.g. unknown ID), so one missing recipe
+        does not fail the others.
+
+        ``instructions`` holds the cooking steps in their original groups
+        (dough, filling, ...) as plain text, with the appliance icons spelled
         out ("30 sec/sens inverse/vitesse 5").
 
-        With ``include_interactions=true`` the result also carries the
+        With ``include_interactions=true`` each recipe also carries the
         user's own rating, the community rating and the personal note.
         With ``include_images=true`` it lists every photo of the recipe
         (``images``, each in square/portrait/landscape variants). Both
         flags cost extra upstream calls — request them only when needed.
         """
-        session = get_context(ctx).session
-        if not include_interactions and not include_images:
-            return await session.get_recipe_details(recipe_id)
-
-        async def _interactions() -> RecipeInteractions | None:
-            if not include_interactions:
-                return None
-            return await session.get_recipe_interactions(recipe_id)
-
-        async def _images() -> list[RecipeImage]:
-            if not include_images:
-                return []
-            return await session.get_recipe_images(recipe_id)
-
-        details, interactions, images = await asyncio.gather(
-            session.get_recipe_details(recipe_id), _interactions(), _images()
+        return await get_context(ctx).session.get_recipe_details_batch(
+            recipe_ids,
+            include_interactions=include_interactions,
+            include_images=include_images,
         )
-        update: dict[str, Any] = {}
-        if include_interactions:
-            update["interactions"] = interactions
-        if include_images:
-            update["images"] = images
-        return details.model_copy(update=update)
 
     @mcp.tool()
     async def get_custom_recipe_details(ctx: ToolContext, recipe_id: str) -> CustomRecipeDetails:
@@ -90,12 +78,12 @@ def register(mcp: MCPServer) -> None:
         servings: int = 4,
         prep_minutes: int = 30,
         total_minutes: int = 60,
-        tools: list[ThermomixTool] | None = None,
+        tools: list[DeviceModel] | None = None,
         hints: list[str] | None = None,
     ) -> CustomRecipeDraft:
         """Build a validated custom-recipe draft ready for quality check and upload.
 
-        ``tools`` lists the Thermomix device generations the recipe is
+        ``tools`` lists the device generations the recipe is
         compatible with — allowed values are ``"TM5"``, ``"TM6"``, ``"TM7"``
         and nothing else. It is NOT a list of bowl accessories (Mixtopf,
         Spatel, Varoma, Schmetterling, ...). Pick the lowest TM model that
@@ -137,7 +125,7 @@ def register(mcp: MCPServer) -> None:
 
     @mcp.tool()
     async def validate_recipe_quality(ctx: ToolContext, draft: CustomRecipeDraft) -> QualityReport:
-        """Score a draft against the Thermomix recipe quality bar without uploading."""
+        """Score a draft against the recipe quality bar without uploading."""
         return get_context(ctx).scorer.score(draft)
 
     @mcp.tool()
@@ -162,7 +150,7 @@ def register(mcp: MCPServer) -> None:
         For draft construction, see ``generate_recipe_structure`` or the
         README's "Guided-cooking annotations" section — every annotation
         kind (TTS, INGREDIENT, all seven MODE variants) is accepted here
-        verbatim and forwarded to Cookidoo.
+        verbatim and forwarded upstream.
         """
         app = get_context(ctx)
         report = app.scorer.score(draft)
@@ -209,10 +197,10 @@ def register(mcp: MCPServer) -> None:
     async def clone_recipe_as_custom(
         ctx: ToolContext, recipe_id: str, serving_size: int = 4
     ) -> CustomRecipeDetails:
-        """Copy a Cookidoo recipe into the user's custom recipes.
+        """Copy a catalogue recipe into the user's custom recipes.
 
-        Equivalent to "Save as own recipe" in the Cookidoo apps: takes the
-        ID of any Cookidoo recipe (`get_recipe_details` returns this ID) and
+        Equivalent to "Save as own recipe" in the official apps: takes the
+        ID of any catalogue recipe (`get_recipe_details` returns this ID) and
         creates a personal, editable copy at the chosen serving size.
         """
         return await get_context(ctx).session.clone_recipe_as_custom(recipe_id, serving_size)
@@ -228,7 +216,7 @@ def register(mcp: MCPServer) -> None:
 
         The scraped ``draft`` and ``quality`` report are **always** returned,
         even when the quality bar blocks the upload. That lets the caller —
-        typically an LLM — read the recipe, rewrite the step text into Thermomix
+        typically an LLM — read the recipe, rewrite the step text into
         guided-cooking annotations (e.g. "5 min / 100 °C / speed 3"), and
         resubmit via ``upload_custom_recipe``.
 
@@ -253,7 +241,7 @@ async def _score_and_maybe_upload(
             blocked_reason=(
                 f"Quality score {report.score} is below the threshold "
                 f"{report.threshold}. The scraped draft is returned for "
-                f"editing — rewrite the steps with Thermomix guided-cooking "
+                f"editing — rewrite the steps with guided-cooking "
                 f"annotations and resubmit via upload_custom_recipe, or "
                 f"call import_web_recipe again with force=true to upload "
                 f"the draft as-is."

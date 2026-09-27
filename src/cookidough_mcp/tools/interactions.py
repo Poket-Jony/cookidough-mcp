@@ -1,6 +1,6 @@
 """Recipe interaction tools: rating, bookmark, personal note, cooked-history.
 
-These wrap Cookidoo endpoints that are not part of ``cookidoo-api``; the
+These wrap platform endpoints that are not part of ``cookidoo-api``; the
 session layer talks to them directly over the authenticated HTTP channel.
 """
 
@@ -43,7 +43,7 @@ def register(mcp: MCPServer) -> None:
         when logging one of your own recipes as cooked; rating, bookmark
         and note apply to catalogue recipes only. ``cooked_at`` (ISO-8601
         with a timezone, not in the future) backdates the cooked entry;
-        without it Cookidoo stamps the current time. The history keeps one
+        without it the platform stamps the current time. The history keeps one
         entry per recipe and the newest timestamp wins, so an older date
         never replaces a newer one.
 

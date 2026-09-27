@@ -24,6 +24,14 @@ def get_tool_fn(mcp: MCPServer, name: str) -> Any:
     return tool.fn
 
 
+def get_tool_parameters(mcp: MCPServer, name: str) -> dict[str, Any]:
+    """Return the JSON schema of the arguments the tool announces to clients."""
+    tool = mcp._tool_manager.get_tool(name)
+    if tool is None:
+        raise KeyError(f"Tool {name!r} is not registered.")
+    return tool.parameters
+
+
 def get_resource_fn(mcp: MCPServer, uri: str) -> Any:
     """Return the raw function backing the static resource at `uri`."""
     for resource in mcp._resource_manager.list_resources():

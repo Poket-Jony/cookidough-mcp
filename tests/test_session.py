@@ -39,7 +39,7 @@ from cookidough_mcp.annotation_models import (
     WarmUpModeAnnotation,
     WarmUpModeData,
 )
-from cookidough_mcp.china_client import CHINA_LOCALIZATION, ChinaCookidoo
+from cookidough_mcp.china_client import CHINA_LOCALIZATION, ChinaClient
 from cookidough_mcp.config import Settings
 from cookidough_mcp.errors import AuthenticationError, NotFoundError, UpstreamApiError
 from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
@@ -356,7 +356,7 @@ def _china_settings() -> Settings:
 def test_build_client_selects_the_china_adapter_for_cn() -> None:
     session = CookidoughSession(_china_settings())
     client = session._build_client(cast(Any, object()), CHINA_LOCALIZATION)
-    assert isinstance(client, ChinaCookidoo)
+    assert isinstance(client, ChinaClient)
     assert client.localization.url.startswith("https://cookidoo.com.cn")
 
 
@@ -366,7 +366,7 @@ def test_build_client_keeps_the_global_client_elsewhere(settings: Any) -> None:
         country_code="de", language="de-DE", url="https://cookidoo.de"
     )
     client = session._build_client(cast(Any, object()), localization)
-    assert not isinstance(client, ChinaCookidoo)
+    assert not isinstance(client, ChinaClient)
     assert client.localization.language == "de-DE"
 
 
@@ -599,7 +599,7 @@ def _settings_with_token_file(tmp_path: Path) -> Settings:
 
 
 class _TokenPersistence(Protocol):
-    """The slice of the Cookidoo client that token persistence relies on."""
+    """The slice of the upstream client that token persistence relies on."""
 
     def load_token(self, path: str | Path) -> None: ...
 
@@ -612,7 +612,7 @@ def _upstream_guard(client: Cookidoo) -> _TokenPersistence:
 
 
 class _TokenClient:
-    """Fake Cookidoo client for the token load/save lifecycle."""
+    """Fake upstream client for the token load/save lifecycle."""
 
     def __init__(self, *, load_raises: bool = False) -> None:
         self._load_raises = load_raises
@@ -1008,7 +1008,7 @@ def test_draft_to_payload_serializes_known_fields() -> None:
 
 def test_custom_recipe_draft_rejects_unknown_tools() -> None:
     """Non-TM model strings (e.g. accessory names) must fail validation
-    before reaching the upload payload — Cookidoo silently drops them."""
+    before reaching the upload payload — the platform silently drops them."""
     with pytest.raises(ValueError, match="tools"):
         CustomRecipeDraft(
             name="Test",
@@ -1232,7 +1232,7 @@ def test_warm_up_mode_data_omits_time_when_not_set() -> None:
     """The annotation-data wrap serializer drops ``None`` fields at the source.
 
     Plain ``model_dump()`` (no kwargs) must already produce the wire shape
-    Cookidoo expects, without the caller asking for ``exclude_none``.
+    the platform expects, without the caller asking for ``exclude_none``.
     """
     annotation = WarmUpModeAnnotation(
         data=WarmUpModeData(speed="soft", temperature=TemperatureData(value="37")),
@@ -1276,7 +1276,7 @@ def test_draft_to_payload_emits_tts_direction_when_set() -> None:
 
 
 def test_turbo_mode_supports_sub_second_time() -> None:
-    """Cookidoo's frontend emits Turbo durations like ``0.5`` s — DTO must allow floats."""
+    """The platform's frontend emits Turbo durations like ``0.5`` s — DTO must allow floats."""
     annotation = TurboModeAnnotation(
         data=TurboModeData(time=0.5, pulseCount=9),
         offset=0,

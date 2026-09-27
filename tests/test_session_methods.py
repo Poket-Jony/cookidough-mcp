@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock
@@ -10,7 +11,12 @@ from unittest.mock import AsyncMock
 import pytest
 from cookidoo_api.exceptions import CookidooRequestException
 
-from cookidough_mcp.errors import NotFoundError, UpstreamApiError
+from cookidough_mcp.errors import (
+    AuthenticationError,
+    NotFoundError,
+    SessionClosedError,
+    UpstreamApiError,
+)
 from cookidough_mcp.models import (
     AdditionalItemRename,
     CustomRecipeDraft,
@@ -642,7 +648,7 @@ async def test_clone_recipe_as_custom_maps_response(
 async def test_clone_recipe_as_custom_propagates_upstream_errors(
     patched_session: tuple[CookidoughSession, Any],
 ) -> None:
-    """A Cookidoo write failure (validation, non-cloneable recipe, transient
+    """An upstream write failure (validation, non-cloneable recipe, transient
     5xx) must surface as ``UpstreamApiError`` with the original upstream
     message — not be remapped to ``NotFoundError``. Mapping it to 404 would
     tell the LLM the source recipe does not exist, even when it does."""
@@ -652,6 +658,156 @@ async def test_clone_recipe_as_custom_propagates_upstream_errors(
     )
     with pytest.raises(UpstreamApiError, match="request exception"):
         await session.clone_recipe_as_custom("missing", 4)
+
+
+def _stub_recipe_reads(
+    monkeypatch: pytest.MonkeyPatch, session: CookidoughSession, *, missing: str | None = None
+) -> None:
+    from cookidough_mcp.models import RecipeDetails, RecipeImage, RecipeInteractions
+
+    async def _details(rid: str) -> RecipeDetails:
+        if rid == missing:
+            raise NotFoundError(f"Recipe {rid!r} not available")
+        return RecipeDetails(id=rid, name=f"Recipe {rid}", url=f"https://cookidoo.de/recipes/{rid}")
+
+    async def _interactions(rid: str) -> RecipeInteractions:
+        return RecipeInteractions(recipe_id=rid, own_rating=4)
+
+    async def _images(rid: str) -> list[RecipeImage]:
+        return [RecipeImage(square=f"https://img/{rid}")]
+
+    monkeypatch.setattr(session, "get_recipe_details", _details)
+    monkeypatch.setattr(session, "get_recipe_interactions", _interactions)
+    monkeypatch.setattr(session, "get_recipe_images", _images)
+
+
+async def test_get_recipe_details_batch_keeps_order_and_drops_duplicates(
+    monkeypatch: pytest.MonkeyPatch, patched_session: tuple[CookidoughSession, Any]
+) -> None:
+    session, _ = patched_session
+    _stub_recipe_reads(monkeypatch, session)
+
+    results = await session.get_recipe_details_batch(["r2", "r1", "r2"])
+
+    assert [r.recipe_id for r in results] == ["r2", "r1"]
+    assert all(r.details is not None and r.error is None for r in results)
+    assert results[0].details is not None
+    assert results[0].details.interactions is None
+    assert results[0].details.images == []
+
+
+async def test_get_recipe_details_batch_enriches_on_request(
+    monkeypatch: pytest.MonkeyPatch, patched_session: tuple[CookidoughSession, Any]
+) -> None:
+    session, _ = patched_session
+    _stub_recipe_reads(monkeypatch, session)
+
+    [result] = await session.get_recipe_details_batch(
+        ["r1"], include_interactions=True, include_images=True
+    )
+
+    assert result.details is not None
+    assert result.details.interactions is not None
+    assert result.details.interactions.own_rating == 4
+    assert [i.square for i in result.details.images] == ["https://img/r1"]
+
+
+async def test_get_recipe_details_batch_reports_a_missing_recipe_per_entry(
+    monkeypatch: pytest.MonkeyPatch, patched_session: tuple[CookidoughSession, Any]
+) -> None:
+    session, _ = patched_session
+    _stub_recipe_reads(monkeypatch, session, missing="gone")
+
+    ok, missing = await session.get_recipe_details_batch(["r1", "gone"])
+
+    assert ok.details is not None
+    assert missing.details is None
+    assert missing.error is not None
+    assert "gone" in missing.error
+
+
+async def test_get_recipe_details_batch_keeps_the_details_when_images_fail(
+    monkeypatch: pytest.MonkeyPatch,
+    patched_session: tuple[CookidoughSession, Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session, _ = patched_session
+    _stub_recipe_reads(monkeypatch, session)
+
+    async def _images(rid: str) -> Any:
+        raise UpstreamApiError("HTTP 502")
+
+    monkeypatch.setattr(session, "get_recipe_images", _images)
+
+    with caplog.at_level(logging.WARNING):
+        [result] = await session.get_recipe_details_batch(["r1"], include_images=True)
+
+    assert result.error is None
+    assert result.details is not None
+    assert result.details.images == []
+    assert "HTTP 502" in caplog.text
+
+
+async def test_get_recipe_details_batch_cancels_the_enrichment_of_a_missing_recipe(
+    monkeypatch: pytest.MonkeyPatch, patched_session: tuple[CookidoughSession, Any]
+) -> None:
+    session, _ = patched_session
+    _stub_recipe_reads(monkeypatch, session, missing="gone")
+    cancelled = asyncio.Event()
+
+    async def _images(rid: str) -> Any:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+
+    monkeypatch.setattr(session, "get_recipe_images", _images)
+
+    [result] = await session.get_recipe_details_batch(["gone"], include_images=True)
+
+    assert result.error is not None
+    assert cancelled.is_set()
+
+
+async def test_get_recipe_details_batch_propagates_authentication_errors(
+    monkeypatch: pytest.MonkeyPatch, patched_session: tuple[CookidoughSession, Any]
+) -> None:
+    session, _ = patched_session
+
+    async def _details(rid: str) -> Any:
+        raise AuthenticationError("login failed")
+
+    monkeypatch.setattr(session, "get_recipe_details", _details)
+
+    with pytest.raises(AuthenticationError):
+        await session.get_recipe_details_batch(["r1"])
+
+
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("get_recipe_details", ("r1",)),
+        ("get_custom_recipe_details", ("cr1",)),
+        ("get_recipe_interactions", ("r1",)),
+    ],
+)
+async def test_closed_session_is_not_masked_as_a_missing_recipe(
+    settings: Any, method: str, args: tuple[str, ...]
+) -> None:
+    session = CookidoughSession(settings)
+    await session.aclose()
+
+    with pytest.raises(SessionClosedError):
+        await getattr(session, method)(*args)
+
+
+async def test_get_recipe_details_batch_propagates_a_closed_session(settings: Any) -> None:
+    session = CookidoughSession(settings)
+    await session.aclose()
+
+    with pytest.raises(SessionClosedError):
+        await session.get_recipe_details_batch(["r1"])
 
 
 async def test_suggest_recipes_from_ingredients_collects_and_scores(
@@ -1008,7 +1164,7 @@ async def test_search_recipes_url_encodes_query_plus_sign(
     monkeypatch: pytest.MonkeyPatch, settings: Any
 ) -> None:
     """Without quote_plus, a literal '+' in the query is forwarded as '+'
-    which Cookidoo's search decodes as a space — a silent UX bug."""
+    which the platform's search decodes as a space — a silent UX bug."""
     from contextlib import asynccontextmanager
 
     session = CookidoughSession(settings)
@@ -1152,25 +1308,22 @@ async def test_suggest_recipes_tolerates_individual_recipe_errors(
     assert [s.recipe.id for s in suggestions] == ["ok"]
 
 
-async def test_suggest_recipes_propagates_unexpected_upstream_errors(
-    patched_session: tuple[CookidoughSession, Any],
+async def test_suggest_recipes_propagates_a_session_closed_mid_flight(
+    monkeypatch: pytest.MonkeyPatch, patched_session: tuple[CookidoughSession, Any]
 ) -> None:
-    """A non-NotFound failure (e.g. session closed mid-flight) must propagate.
-
-    The previous implementation caught both NotFoundError and UpstreamApiError,
-    which silently absorbed the 'Session is closed.' signal that
-    ``_ensure_logged_in`` raises after ``aclose``. Now only NotFoundError
-    is swallowed.
-    """
     session, fake = patched_session
     collection = _NS(id="c", chapters=[_NS(name="x", recipes=[_NS(id="boom")])])
     _mock_collections(fake, managed=[], custom=[collection])
-    session.search_recipes = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    monkeypatch.setattr(session, "search_recipes", AsyncMock(return_value=[]))
 
-    async def _details(_rid: str) -> Any:
-        raise UpstreamApiError("Session is closed.")
+    async def _closed() -> Any:
+        raise SessionClosedError("Session is closed.")
 
-    session.get_recipe_details = _details  # type: ignore[method-assign,assignment]
+    async def _close_after_listing(page: int = 0) -> list[Any]:
+        monkeypatch.setattr(session, "_ensure_logged_in", _closed)
+        return [collection]
+
+    fake.get_custom_collections = _close_after_listing
     with pytest.raises(UpstreamApiError, match="closed"):
         await session.suggest_recipes_from_ingredients(["rice"])
 
@@ -1438,7 +1591,7 @@ async def test_list_bookmarked_recipes_surfaces_upstream_failure(
     monkeypatch: pytest.MonkeyPatch, settings: Any
 ) -> None:
     session, _, responses = _interaction_session(monkeypatch, settings)
-    responses["api/bookmark"] = UpstreamApiError("Cookidoo returned non-JSON payload")
+    responses["api/bookmark"] = UpstreamApiError("Upstream returned non-JSON payload")
     with pytest.raises(UpstreamApiError, match="non-JSON"):
         await session.list_bookmarked_recipes()
 

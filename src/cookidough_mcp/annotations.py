@@ -1,11 +1,11 @@
-"""Thermomix guided-cooking annotation inference for plain-text recipe steps.
+"""Guided-cooking annotation inference for plain-text recipe steps.
 
 When a step lacks explicit annotations, an `AnnotationInferrer` scans the
 step text and produces a best-effort list of `StepAnnotation`s. Strategies
 are conservative — emitting nothing is preferred over emitting wrong spans.
 
 ``Anbraten``, ``Dampfgaren``, ``Pürieren`` etc. as bare verbs are *not*
-matched as MODE spans; the inferrer requires the canonical Cookidoo phrase
+matched as MODE spans; the inferrer requires the canonical platform phrase
 (``<n> Min./<temp> °C/(Leicht|Intensiv)`` for browning, ``<n>/Varoma/Stufe
 <n>`` for steaming, ``<n> Min./Teigstufe`` for dough/knead). The remaining
 MODEs (``turbo``, ``rice_cooker``, ``warm_up``, ``blend``) have no
@@ -51,7 +51,7 @@ _TTS_PATTERN = re.compile(
     r"/\s*"
     r"(?:(?P<temperature>\d+)\s*°\s*C|(?P<varoma>Varoma))?"
     # The separator between temperature/varoma and reverse is independent
-    # of whether either preceded — Cookidoo wording like "30 Sek./Linkslauf/
+    # of whether either preceded — platform wording like "30 Sek./Linkslauf/
     # Stufe 2" omits temperature but still has the slash before the
     # reverse-blade token. Modelling the slash as its own optional segment
     # (rather than wired into the reverse group) lets both forms match.
@@ -70,7 +70,7 @@ _TTS_PATTERN = re.compile(
     # distinguishable from a normal numeric speed and from soft mode.
     r"\b(?P<brown_compound>Anbratstufe|Bratstufe)\b"
     r")"
-    # Cookidoo and LLM-generated wording is inconsistent about where the
+    # Platform and LLM-generated wording is inconsistent about where the
     # reverse-blade indicator sits relative to the speed: both
     # ``/Linkslauf/Stufe 1`` (canonical, captured by ``reverse`` above) and
     # ``/Stufe 1/Linkslauf`` (frequent in modern TM7 recipes) appear. We
@@ -104,7 +104,7 @@ _BROWNING_TIME_RANGE_SECONDS = (1, 1800)
 
 # Unit tokens that may precede the head noun of an ingredient line. Matched
 # case-insensitively, with an optional trailing period stripped before lookup.
-# Multi-locale coverage (DE/EN/FR/IT/ES/NL) follows Cookidoo's supported
+# Multi-locale coverage (DE/EN/FR/IT/ES/NL) follows the platform's supported
 # storefronts. Generic adjectives ("groß", "klein", "frisch", "fresh", "fresco")
 # are *not* listed because we only want to drop a unit, never an adjective that
 # is actually part of the head noun.
@@ -254,7 +254,7 @@ class AnnotationStrategy(Protocol):
 class BrowningStrategy:
     """Detects ``<n> Min./<temp> °C/(Leicht|Intensiv)`` spans and emits MODE/BROWNING.
 
-    Cookidoo only accepts a small whitelist of browning temperatures
+    The platform only accepts a small whitelist of browning temperatures
     (140..160 °C in 5 °C steps); spans outside that range are skipped.
     """
 
@@ -349,7 +349,7 @@ class TtsStrategy:
 class DoughStrategy:
     """Detects ``<n> Min./Teigstufe`` spans and emits ``MODE/dough``.
 
-    Cookidoo's dough/knead mode has no temperature or speed parameters — the
+    The dough/knead mode has no temperature or speed parameters — the
     span only carries a duration. The pattern is intentionally narrow
     (``Teigstufe``, ``Stufe Teig``, English ``dough mode`` / ``knead mode``)
     to avoid matching unrelated dough references in prose.
@@ -399,7 +399,7 @@ class IngredientStrategy:
     — that would refer to a different ingredient).
 
     The ``description`` of the emitted annotation is the **full canonical
-    ingredient line**, not the matched substring — Cookidoo expects the
+    ingredient line**, not the matched substring — the platform expects the
     canonical entry there so the app can resolve quantities.
     """
 

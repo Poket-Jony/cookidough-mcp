@@ -1,4 +1,4 @@
-"""Cookidoo guided-cooking annotation DTOs.
+"""Guided-cooking annotation DTOs.
 
 Split out of ``models.py`` because the annotation domain has its own
 sprawl of enums, mode-specific ``data`` submodels, the discriminated
@@ -13,7 +13,7 @@ mirrors the ``extra='ignore'`` config used by tool-IO DTOs.
 and the MCP server introspect concrete types at runtime to build JSON schemas and
 the discriminated-union dispatch table.
 
-Adding a new ``MODE`` variant (when Cookidoo introduces one) takes four
+Adding a new ``MODE`` variant (when the platform introduces one) takes four
 changes in this file:
 
 1. Add the lowercase token to ``ModeName``.
@@ -40,7 +40,7 @@ from pydantic import (
 
 
 class StepAnnotationType(StrEnum):
-    """Cookidoo guided-cooking annotation type. Values mirror the upstream API."""
+    """Guided-cooking annotation type. Values mirror the upstream API."""
 
     TTS = "TTS"
     INGREDIENT = "INGREDIENT"
@@ -50,7 +50,7 @@ class StepAnnotationType(StrEnum):
 class ModeName(StrEnum):
     """Sub-type discriminator for ``MODE`` annotations.
 
-    Values mirror the lowercase tokens Cookidoo's frontend sends in the
+    Values mirror the lowercase tokens the platform's frontend sends in the
     ``annotations[].name`` field.
     """
 
@@ -64,7 +64,7 @@ class ModeName(StrEnum):
 
 
 class BrowningPower(StrEnum):
-    """Heat level for the Thermomix browning mode."""
+    """Heat level for the browning mode."""
 
     INTENSE = "Intense"
     GENTLE = "Gentle"
@@ -97,7 +97,7 @@ class _AnnotationDataModel(_AnnotationModel):
     """Base for annotation ``data`` submodels.
 
     Strips ``None`` fields on serialization so MCP tool responses match
-    the Cookidoo wire format, which omits absent optional fields rather
+    the upstream wire format, which omits absent optional fields rather
     than emitting ``null``.
     """
 
@@ -110,14 +110,14 @@ class _AnnotationDataModel(_AnnotationModel):
 
 
 class TemperatureData(_AnnotationDataModel):
-    """Temperature value with its unit, as Cookidoo emits it."""
+    """Temperature value with its unit, as the platform emits it."""
 
     value: str = Field(min_length=1)
     unit: Literal["C"] = "C"
 
 
 class TtsAnnotationData(_AnnotationDataModel):
-    """Payload of a TTS annotation: Thermomix speed level and duration."""
+    """Payload of a TTS annotation: appliance speed level and duration."""
 
     speed: str = Field(min_length=1)
     time: int = Field(gt=0)
@@ -157,12 +157,12 @@ class DoughModeData(_AnnotationDataModel):
 class TurboModeData(_AnnotationDataModel):
     """Payload of a ``MODE/turbo`` annotation.
 
-    ``time`` is a float because Cookidoo emits sub-second pulse durations
+    ``time`` is a float because the platform emits sub-second pulse durations
     (e.g. ``0.5``); ``pulseCount`` is the number of repeated bursts.
     """
 
     time: float = Field(gt=0)
-    pulseCount: int = Field(ge=1)  # noqa: N815 — matches Cookidoo wire field
+    pulseCount: int = Field(ge=1)  # noqa: N815 — matches the upstream wire field
 
 
 class RiceCookerModeData(_AnnotationDataModel):
@@ -172,7 +172,7 @@ class RiceCookerModeData(_AnnotationDataModel):
 class WarmUpModeData(_AnnotationDataModel):
     """Payload of a ``MODE/warm_up`` annotation.
 
-    ``time`` is optional — Cookidoo emits warm-up spans without a duration
+    ``time`` is optional — the platform emits warm-up spans without a duration
     when the user did not specify one in the source recipe.
     """
 
@@ -194,7 +194,7 @@ class _AnnotationBase(_AnnotationModel):
 
 
 class TtsAnnotation(_AnnotationBase):
-    """Thermomix instruction span (time/speed) that the app can dispatch."""
+    """Appliance instruction span (time/speed) that the app can dispatch."""
 
     type: Literal[StepAnnotationType.TTS] = StepAnnotationType.TTS
     data: TtsAnnotationData

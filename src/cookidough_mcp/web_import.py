@@ -6,7 +6,7 @@ must still be added manually before upload — the importer only carries raw
 step text and ingredient lines through.
 
 Note: image URLs are not propagated to `CustomRecipeDraft` because the
-Cookidoo upload endpoint does not accept arbitrary external image URLs; the
+upload endpoint does not accept arbitrary external image URLs; the
 official apps upload binary blobs after the recipe is created. Adding image
 upload is intentionally out of scope.
 """
@@ -135,7 +135,7 @@ def _split_instructions(text: str) -> list[str]:
 def _parse_yield(value: Any) -> int | None:
     """Extract the first integer from a yield string, e.g. ``"4-6 servings" -> 4``.
 
-    The lower bound of a range is returned because Cookidoo's custom-recipe
+    The lower bound of a range is returned because the platform's custom-recipe
     schema only accepts a single integer; users can edit the value after the
     upload if they need the upper bound instead.
     """

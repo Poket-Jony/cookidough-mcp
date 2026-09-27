@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def register(mcp: MCPServer) -> None:
     @mcp.tool()
     async def list_managed_collections(ctx: ToolContext, page: int = 0) -> CollectionPage:
-        """List the user's managed Cookidoo collections (Cookbooks).
+        """List the user's managed collections (Cookbooks).
 
         Returns one page of ``items`` plus ``total_pages``/``total_elements``
         so callers know whether to request further pages.
@@ -23,7 +23,7 @@ def register(mcp: MCPServer) -> None:
 
     @mcp.tool()
     async def add_managed_collection(ctx: ToolContext, collection_id: str) -> CollectionSummary:
-        """Subscribe to an existing managed Cookidoo collection by its ID."""
+        """Subscribe to an existing managed collection by its ID."""
         return await get_context(ctx).session.add_managed_collection(collection_id)
 
     @mcp.tool()

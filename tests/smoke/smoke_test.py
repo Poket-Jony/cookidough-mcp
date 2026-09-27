@@ -1,4 +1,4 @@
-"""End-to-end smoke test against a live Cookidoo account.
+"""End-to-end smoke test against a live platform account.
 
 This test launches ``./run.sh`` exactly as Claude Desktop does and drives every
 registered MCP tool over the JSON-RPC stdio protocol. The session layer is
@@ -49,12 +49,12 @@ Coverage gaps, all deliberate:
   permanent dangling entry on the account.
 
 The interaction, recommendation, bookmark, and device endpoints are
-undocumented Cookidoo APIs whose methods and payload shapes were verified
+undocumented platform APIs whose methods and payload shapes were verified
 against the live API. They are asserted as hard contracts
 here — any mismatch fails the run.
 
 Bookmark and note are reverted. The rating is restored to whatever the
-recipe carried before the run — Cookidoo's rating route offers only GET and
+recipe carried before the run — the platform's rating route offers only GET and
 PUT, PUT rejects ``0``/``null``, and no DELETE exists at any level, so a
 recipe that was *unrated* before cannot be returned to that state; the run
 warns when that happens. The cooking-history entry always persists: its
@@ -140,7 +140,7 @@ SENTINEL_ITEM_NAME = f"[SMOKE_TEST cookidough-mcp] clear-sentinel {MARKER}"
 RECIPE_NAME = f"[SMOKE_TEST cookidough-mcp] recipe {MARKER}"
 FUTURE_TEST_DAY = "2099-01-01"
 
-# Stable Cookidoo catalogue managed collection used by the add/remove roundtrip.
+# Stable catalogue managed collection used by the add/remove roundtrip.
 # Picked because it is a long-running themed cookbook unlikely to vanish. The
 # section is SKIPPED when the account already has it subscribed, so a failed
 # cleanup cannot orphan the user without it.
@@ -148,7 +148,7 @@ SMOKE_MANAGED_COLLECTION_ID = "col371088"  # "#zuHausemitThermomix"
 SMOKE_CLONE_RECIPE_ID = "r469077"
 
 # Per-tool RPC timeout. The first call triggers ``run.sh``'s bootstrap (~2 s on
-# warm checkouts, longer on a cold .venv) and the live Cookidoo login (~3-5 s),
+# warm checkouts, longer on a cold .venv) and the live platform login (~3-5 s),
 # so the initial round trip needs a comfortable budget.
 CALL_TIMEOUT = 90.0
 
@@ -200,6 +200,13 @@ def _payload(result: CallToolResult, tool: str) -> Any:
 async def _call(mcp: ClientSession, tool: str, **arguments: Any) -> Any:
     result = await mcp.call_tool(tool, arguments=arguments, read_timeout_seconds=CALL_TIMEOUT)
     return _payload(result, tool)
+
+
+async def _recipe_details(mcp: ClientSession, recipe_id: str, **flags: Any) -> Any:
+    [entry] = await _call(mcp, "get_recipe_details", recipe_ids=[recipe_id], **flags)
+    if entry["error"] is not None:
+        raise RuntimeError(f"get_recipe_details({recipe_id!r}) failed: {entry['error']}")
+    return entry["details"]
 
 
 def _ingredient_annotation(text: str, span: str) -> dict[str, Any]:
@@ -384,9 +391,7 @@ async def main() -> int:
 
                     section("Public recipe details (read-only)")
                     if recipe_id_for_lookup:
-                        details = await _call(
-                            mcp, "get_recipe_details", recipe_id=recipe_id_for_lookup
-                        )
+                        details = await _recipe_details(mcp, recipe_id_for_lookup)
                         ok(
                             f"id={details['id']!r} name={details['name']!r} "
                             f"ingredients={len(details['ingredients'])}"
@@ -406,10 +411,9 @@ async def main() -> int:
                                 "nutrition list empty — upstream marks the field as "
                                 "optional, so this is not necessarily a parser miss"
                             )
-                        with_images = await _call(
+                        with_images = await _recipe_details(
                             mcp,
-                            "get_recipe_details",
-                            recipe_id=recipe_id_for_lookup,
+                            recipe_id_for_lookup,
                             include_images=True,
                         )
                         images = with_images["images"]
@@ -428,16 +432,39 @@ async def main() -> int:
                         else:
                             failures += 1
                             fail("include_images=True returned no images for a catalogue recipe")
+                        missing_id = f"r0{MARKER}"
+                        known_ids = list(
+                            dict.fromkeys([recipe_id_for_lookup, SMOKE_CLONE_RECIPE_ID])
+                        )
+                        batch = await _call(
+                            mcp,
+                            "get_recipe_details",
+                            recipe_ids=[*known_ids, missing_id],
+                        )
+                        by_id = {entry["recipe_id"]: entry for entry in batch}
+                        found = [rid for rid in known_ids if (by_id.get(rid) or {}).get("details")]
+                        missing_entry = by_id.get(missing_id) or {}
+                        if (
+                            found == known_ids
+                            and len(batch) == len(known_ids) + 1
+                            and missing_entry.get("error")
+                        ):
+                            ok(
+                                f"batch of {len(batch)}: {len(found)} recipe(s) with details, "
+                                f"unknown ID reported: {missing_entry['error'][:80]!r}"
+                            )
+                        else:
+                            failures += 1
+                            fail(f"batch lookup returned {batch!r}")
                     else:
                         warn("no recipe ID found in calendar — skipping get_recipe_details")
 
                     section("Recipe interactions read (read-only)")
                     if recipe_id_for_lookup:
                         try:
-                            with_inter = await _call(
+                            with_inter = await _recipe_details(
                                 mcp,
-                                "get_recipe_details",
-                                recipe_id=recipe_id_for_lookup,
+                                recipe_id_for_lookup,
                                 include_interactions=True,
                             )
                             inter = with_inter.get("interactions")
@@ -548,7 +575,7 @@ async def main() -> int:
                         info(f"- {issue['rule']} [{issue['severity']}]: {issue['message']}")
 
                     section("Recipe search (read-only)")
-                    # ``Pasta`` is recognised across every Cookidoo locale, so the
+                    # ``Pasta`` is recognised across every platform locale, so the
                     # search hit count is expected to be > 0 on a live account.
                     unfiltered_ids: list[str] = []
                     try:
@@ -570,7 +597,7 @@ async def main() -> int:
                         fail(f"search_recipes raised: {e!r}")
 
                     section("Recipe search with filters (read-only)")
-                    # The filter params mirror the Cookidoo web UI query string;
+                    # The filter params mirror the web app's query string;
                     # their wire format was implemented without live verification,
                     # so this section both exercises and validates them.
                     try:
@@ -615,9 +642,7 @@ async def main() -> int:
                     section("Recipe search, remaining filters (read-only)")
                     sample_category: str | None = None
                     if recipe_id_for_lookup:
-                        cat_source = await _call(
-                            mcp, "get_recipe_details", recipe_id=recipe_id_for_lookup
-                        )
+                        cat_source = await _recipe_details(mcp, recipe_id_for_lookup)
                         if cat_source["categories"]:
                             sample_category = cat_source["categories"][0]["id"]
                             info(f"sample category: {sample_category!r}")
@@ -1170,10 +1195,9 @@ async def main() -> int:
                     if recipe_id_for_lookup:
                         smoke_note = f"[SMOKE_TEST cookidough-mcp] note {MARKER}"
                         try:
-                            before = await _call(
+                            before = await _recipe_details(
                                 mcp,
-                                "get_recipe_details",
-                                recipe_id=recipe_id_for_lookup,
+                                recipe_id_for_lookup,
                                 include_interactions=True,
                             )
                             prior_rating = (before.get("interactions") or {}).get("own_rating")
@@ -1197,10 +1221,9 @@ async def main() -> int:
                                     failures += 1
                                     fail(f"interactions.{action}: status={status!r}")
 
-                            read_back = await _call(
+                            read_back = await _recipe_details(
                                 mcp,
-                                "get_recipe_details",
-                                recipe_id=recipe_id_for_lookup,
+                                recipe_id_for_lookup,
                                 include_interactions=True,
                             )
                             inter_after = read_back.get("interactions") or {}
@@ -1239,7 +1262,7 @@ async def main() -> int:
 
                             if prior_rating is None:
                                 warn(
-                                    "rating stays on the account: Cookidoo has no delete "
+                                    "rating stays on the account: the platform has no delete "
                                     "route and PUT rejects 0/null, so a recipe that was "
                                     "unrated before cannot be restored to unrated"
                                 )
@@ -1250,10 +1273,9 @@ async def main() -> int:
                                     recipe_id=recipe_id_for_lookup,
                                     rating=prior_rating,
                                 )
-                                after_restore = await _call(
+                                after_restore = await _recipe_details(
                                     mcp,
-                                    "get_recipe_details",
-                                    recipe_id=recipe_id_for_lookup,
+                                    recipe_id_for_lookup,
                                     include_interactions=True,
                                 )
                                 now = (after_restore.get("interactions") or {}).get("own_rating")
@@ -1330,7 +1352,7 @@ async def main() -> int:
 
                     section("WRITE: custom recipe calendar add+remove (2099-01-01)")
                     # Schedules the uploaded custom recipe on the same future date.
-                    # Cookidoo can hold regular + custom recipes on the same day;
+                    # The calendar can hold regular + custom recipes on the same day;
                     # the cleanup section removes each entry through its own
                     # endpoint to avoid relying on a cascade.
                     if created_recipe_id is not None:

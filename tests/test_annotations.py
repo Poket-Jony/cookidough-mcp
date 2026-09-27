@@ -182,7 +182,7 @@ class TestTtsStrategy:
         )
 
     def test_matches_reverse_blade_without_temperature(self, strategy: TtsStrategy) -> None:
-        """Cookidoo cold-folding pattern (no temperature, reverse blade)."""
+        """Platform cold-folding pattern (no temperature, reverse blade)."""
         text = "Eischnee 30 Sek./Linkslauf/Stufe 2 unterheben."
 
         result = strategy.detect(text, [])
@@ -262,7 +262,7 @@ class TestBrowningStrategy:
         assert annotation.data.power is BrowningPower.GENTLE
 
     def test_drops_unsupported_temperature(self, strategy: BrowningStrategy) -> None:
-        """Cookidoo only accepts 140..160 °C in 5 °C steps for browning."""
+        """The platform only accepts 140..160 °C in 5 °C steps for browning."""
         text = "Hähnchen 5 Min./130 °C/Intensiv anbraten."
 
         assert strategy.detect(text, []) == []

@@ -14,7 +14,11 @@ class NotFoundError(CookidoughMcpError):
 
 
 class UpstreamApiError(CookidoughMcpError):
-    """Raised when an upstream Cookidoo request fails for a transport reason."""
+    """Raised when an upstream request fails for a transport reason."""
+
+
+class SessionClosedError(UpstreamApiError):
+    """Raised when a call reaches a session that has already been closed."""
 
 
 class QualityGateError(CookidoughMcpError):

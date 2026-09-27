@@ -17,7 +17,7 @@ from pydantic import (
 )
 
 from .annotation_models import StepAnnotation
-from .constants import DEFAULT_THERMOMIX_TOOLS, ThermomixTool
+from .constants import DEFAULT_DEVICE_MODELS, DeviceModel
 
 
 class ShoppingItemSource(StrEnum):
@@ -144,7 +144,7 @@ class RecipeDetails(_Model):
     thumbnail: str | None = None
     image: str | None = None
     difficulty: str | None = None
-    # Cookidoo occasionally returns ``null`` for serving size / time fields
+    # Upstream occasionally returns ``null`` for serving size / time fields
     # (no-cook recipes, legacy entries). Stay tolerant at the boundary so a
     # quirky upstream payload doesn't sink the whole request.
     serving_size: int | None = None
@@ -160,6 +160,14 @@ class RecipeDetails(_Model):
     # Populated only when the caller asks for it (extra upstream calls).
     interactions: RecipeInteractions | None = None
     images: list[RecipeImage] = Field(default_factory=list)
+
+
+class RecipeDetailsResult(_Model):
+    """Outcome for one requested recipe: ``details`` on success, else ``error``."""
+
+    recipe_id: str = Field(min_length=1)
+    details: RecipeDetails | None = None
+    error: str | None = None
 
 
 class CustomRecipeSummary(_Model):
@@ -274,10 +282,10 @@ class CustomRecipeDraft(_Model):
     servings: int = Field(default=4, ge=1, le=99)
     prep_minutes: int = Field(default=30, ge=0, le=24 * 60)
     total_minutes: int = Field(default=60, ge=0, le=24 * 60)
-    tools: list[ThermomixTool] = Field(
-        default_factory=lambda: list(DEFAULT_THERMOMIX_TOOLS),
+    tools: list[DeviceModel] = Field(
+        default_factory=lambda: list(DEFAULT_DEVICE_MODELS),
         description=(
-            "Thermomix device generations the recipe is compatible with. "
+            "Device generations the recipe is compatible with. "
             "Allowed values: 'TM5', 'TM6', 'TM7' — nothing else. "
             "This field is NOT a list of accessories used inside the bowl "
             "(Mixtopf, Spatel, Messbecher, Varoma, Schmetterling, ...); "
@@ -362,7 +370,7 @@ class AdditionalItemRename(_Model):
 
 
 class RecipeSearchResult(_Model):
-    """Single result from the Cookidoo recipe search."""
+    """Single result from the catalogue recipe search."""
 
     id: str = Field(min_length=1)
     name: str
@@ -394,7 +402,7 @@ class WebImportResult(_Model):
 
     ``draft`` and ``quality`` are always populated, even when the quality bar
     blocks the upload — that way the LLM caller can read the scraped recipe,
-    rework the steps into Thermomix guided-cooking annotations, and resubmit via
+    rework the steps into guided-cooking annotations, and resubmit via
     ``upload_custom_recipe``. ``upload`` is populated only when the gate
     passed or the call was forced.
     """
