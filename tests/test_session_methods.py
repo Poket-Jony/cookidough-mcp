@@ -335,6 +335,31 @@ async def test_get_subscription_maps_fields(
     assert sub.subscription_source == "STORE"
 
 
+async def test_get_custom_recipe_details_renders_steps_as_plain_text(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.get_custom_recipe = AsyncMock(
+        return_value=_NS(
+            id="cr1",
+            name="Spargelsalat",
+            url="https://cookidoo.de/created-recipes/de-DE/cr1",
+            serving_size=4,
+            active_time=600,
+            total_time=1200,
+            tools=["TM6"],
+            ingredients=["10 g Zucker"],
+            instructions=["Zucker zugeben, Anbraten \ue026 und umfüllen."],
+            thumbnail=None,
+            image=None,
+        )
+    )
+
+    details = await session.get_custom_recipe_details("cr1")
+
+    assert details.instructions == ["Zucker zugeben, Anbraten und umfüllen."]
+
+
 async def test_get_custom_recipe_details_not_found(
     patched_session: tuple[CookidoughSession, Any],
 ) -> None:

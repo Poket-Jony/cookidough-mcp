@@ -66,7 +66,10 @@ def register(mcp: MCPServer) -> None:
 
     @mcp.tool()
     async def get_custom_recipe_details(ctx: ToolContext, recipe_id: str) -> CustomRecipeDetails:
-        """Fetch full details of the authenticated user's custom recipe by its ID."""
+        """Fetch full details of the authenticated user's custom recipe by its ID.
+
+        Steps come back as plain text without their guided-cooking annotations.
+        """
         return await get_context(ctx).session.get_custom_recipe_details(recipe_id)
 
     @mcp.tool()
@@ -145,7 +148,8 @@ def register(mcp: MCPServer) -> None:
         replace): fetch the current recipe via ``get_custom_recipe_details``,
         edit, and resubmit. Plain-text steps get their guided-cooking
         annotations re-inferred on upload — original annotations are not
-        preserved unless supplied explicitly in the draft.
+        preserved unless supplied explicitly in the draft. Ingredient links
+        are inferred for every step without its own INGREDIENT annotation.
 
         For draft construction, see ``generate_recipe_structure`` or the
         README's "Guided-cooking annotations" section — every annotation

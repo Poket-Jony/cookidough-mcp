@@ -1109,6 +1109,64 @@ def test_draft_to_payload_passes_explicit_annotations_through() -> None:
     ]
 
 
+def test_recipe_step_rejects_annotation_cutting_through_a_word() -> None:
+    text = "Öl, grünen Spargel und Pinienkerne in den Mixtopf geben und Anbraten."
+    with pytest.raises(ValueError, match=r"covers 'nd Anbra'.*'Anbraten' at offset 60"):
+        RecipeStep(
+            text=text,
+            annotations=[
+                BrowningModeAnnotation(
+                    data=BrowningModeData(
+                        time=300,
+                        temperature=TemperatureData(value="160"),
+                        power=BrowningPower.INTENSE,
+                    ),
+                    offset=57,
+                    length=8,
+                )
+            ],
+        )
+
+
+def test_draft_to_payload_adds_ingredient_links_next_to_explicit_mode_annotations() -> None:
+    text = "Zucker in den Mixtopf geben, Anbraten und umfüllen."
+    mode = BrowningModeAnnotation(
+        data=BrowningModeData(
+            time=180, temperature=TemperatureData(value="160"), power=BrowningPower.INTENSE
+        ),
+        offset=text.index("Anbraten"),
+        length=len("Anbraten"),
+    )
+    draft = CustomRecipeDraft(
+        name="X",
+        ingredients=["10 g Zucker"],
+        steps=[RecipeStep(text=text, annotations=[mode])],
+    )
+
+    annotations = _draft_to_payload(draft)["instructions"][0]["annotations"]
+
+    assert [(a["type"], a["position"]) for a in annotations] == [
+        ("INGREDIENT", {"offset": 0, "length": len("Zucker")}),
+        ("MODE", {"offset": mode.offset, "length": mode.length}),
+    ]
+
+
+def test_draft_to_payload_skips_ingredient_inference_when_step_links_ingredients() -> None:
+    text = "3 EL Öl und Zucker erhitzen."
+    link = IngredientAnnotation(
+        data=IngredientAnnotationData(description="3 EL Öl"), offset=0, length=7
+    )
+    draft = CustomRecipeDraft(
+        name="X",
+        ingredients=["3 EL Öl", "10 g Zucker"],
+        steps=[RecipeStep(text=text, annotations=[link])],
+    )
+
+    annotations = _draft_to_payload(draft)["instructions"][0]["annotations"]
+
+    assert [a["position"] for a in annotations] == [{"offset": 0, "length": 7}]
+
+
 def test_draft_to_payload_infers_annotations_when_step_has_none() -> None:
     draft = CustomRecipeDraft(
         name="X",
@@ -1157,7 +1215,7 @@ def test_draft_to_payload_emits_mode_name_for_browning_annotation() -> None:
 
     instruction = _draft_to_payload(draft)["instructions"][0]
 
-    assert instruction["annotations"] == [
+    assert [a for a in instruction["annotations"] if a["type"] == "MODE"] == [
         {
             "type": "MODE",
             "name": "browning",
@@ -1173,7 +1231,8 @@ def test_draft_to_payload_emits_mode_name_for_browning_annotation() -> None:
 
 def test_draft_to_payload_round_trips_all_mode_annotations() -> None:
     """Every supported MODE name reaches the payload with its canonical shape."""
-    text = "x" * 200
+    sizes = (18, 12, 19, 11, 15, 25)
+    text = " ".join(char * size for char, size in zip("abcdef", sizes, strict=True))
     draft = CustomRecipeDraft(
         name="X",
         ingredients=["Mehl"],
@@ -1355,7 +1414,7 @@ def test_step_annotation_discriminator_dispatches_every_mode() -> None:
                 "ingredients": ["x"],
                 "steps": [
                     {
-                        "text": "x" * 30,
+                        "text": "Mixen und weiterarbeiten.",
                         "annotations": [
                             {
                                 "type": "MODE",

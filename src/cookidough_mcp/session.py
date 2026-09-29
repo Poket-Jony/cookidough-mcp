@@ -37,7 +37,7 @@ from cookidoo_api.exceptions import (
     CookidooRequestException,
 )
 
-from .annotation_models import StepAnnotation
+from .annotation_models import StepAnnotation, StepAnnotationType
 from .annotations import AnnotationInferrer
 from .china_client import CHINA_LOCALIZATION, ChinaClient
 from .constants import (
@@ -593,19 +593,7 @@ class CookidoughSession:
             raise
         except UpstreamApiError as e:
             raise NotFoundError(f"Custom recipe {recipe_id!r} not available: {e}") from e
-        return CustomRecipeDetails(
-            id=recipe.id,
-            name=recipe.name,
-            url=recipe.url,
-            serving_size=recipe.serving_size,
-            active_time_seconds=recipe.active_time,
-            total_time_seconds=recipe.total_time,
-            tools=list(recipe.tools),
-            ingredients=list(recipe.ingredients),
-            instructions=list(recipe.instructions),
-            thumbnail=recipe.thumbnail,
-            image=recipe.image,
-        )
+        return _custom_recipe_to_dto(recipe, self._settings.language_code)
 
     async def list_managed_collections(self, page: int = 0) -> CollectionPage:
         # The count call rides alongside the page fetch so pagination
@@ -823,19 +811,7 @@ class CookidoughSession:
     ) -> CustomRecipeDetails:
         # Write op: a 4xx/5xx is not "not found" — let UpstreamApiError surface unchanged.
         recipe = await self._run(lambda c: c.add_custom_recipe_from(recipe_id, serving_size))
-        return CustomRecipeDetails(
-            id=recipe.id,
-            name=recipe.name,
-            url=recipe.url,
-            serving_size=recipe.serving_size,
-            active_time_seconds=recipe.active_time,
-            total_time_seconds=recipe.total_time,
-            tools=list(recipe.tools),
-            ingredients=list(recipe.ingredients),
-            instructions=list(recipe.instructions),
-            thumbnail=recipe.thumbnail,
-            image=recipe.image,
-        )
+        return _custom_recipe_to_dto(recipe, self._settings.language_code)
 
     async def search_recipes(
         self,
@@ -1682,6 +1658,22 @@ async def _cancelling_task_group() -> AsyncIterator[asyncio.TaskGroup]:
         raise failures.exceptions[0] from None
 
 
+def _custom_recipe_to_dto(recipe: Any, language: str) -> CustomRecipeDetails:
+    return CustomRecipeDetails(
+        id=recipe.id,
+        name=recipe.name,
+        url=recipe.url,
+        serving_size=recipe.serving_size,
+        active_time_seconds=recipe.active_time,
+        total_time_seconds=recipe.total_time,
+        tools=list(recipe.tools),
+        ingredients=list(recipe.ingredients),
+        instructions=[plain_step_text(text, language) for text in recipe.instructions],
+        thumbnail=recipe.thumbnail,
+        image=recipe.image,
+    )
+
+
 def _instruction_groups_to_dtos(groups: Any, language: str) -> list[RecipeInstructionGroup]:
     result: list[RecipeInstructionGroup] = []
     for group in groups:
@@ -2146,11 +2138,32 @@ def _draft_to_payload(
 def _step_to_payload(
     step: RecipeStep, ingredients: list[str], inferrer: AnnotationInferrer
 ) -> dict[str, Any]:
-    annotations = step.annotations or inferrer.infer(step.text, ingredients)
+    annotations = _step_annotations(step, ingredients, inferrer)
     payload: dict[str, Any] = {"type": "STEP", "text": step.text}
     if annotations:
         payload["annotations"] = [_annotation_to_payload(annotation) for annotation in annotations]
     return payload
+
+
+def _step_annotations(
+    step: RecipeStep, ingredients: list[str], inferrer: AnnotationInferrer
+) -> list[StepAnnotation]:
+    explicit = step.annotations
+    if any(a.type == StepAnnotationType.INGREDIENT for a in explicit):
+        return list(explicit)
+    inferred = inferrer.infer(step.text, ingredients)
+    if not explicit:
+        return inferred
+    links = [
+        link
+        for link in inferred
+        if link.type == StepAnnotationType.INGREDIENT
+        and all(
+            link.offset + link.length <= a.offset or link.offset >= a.offset + a.length
+            for a in explicit
+        )
+    ]
+    return sorted([*explicit, *links], key=lambda a: a.offset)
 
 
 def _annotation_to_payload(annotation: StepAnnotation) -> dict[str, Any]:

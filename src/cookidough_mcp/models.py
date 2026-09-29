@@ -266,13 +266,39 @@ class RecipeStep(_Model):
     def _annotations_within_text(self) -> Self:
         text_length = len(self.text)
         for annotation in self.annotations:
-            end = annotation.offset + annotation.length
+            start, length = annotation.offset, annotation.length
+            end = start + length
             if end > text_length:
                 raise ValueError(
-                    f"Annotation span [{annotation.offset}, {end}) exceeds step "
-                    f"text length {text_length}."
+                    f"Annotation span [{start}, {end}) exceeds step text length {text_length}."
+                )
+            if _cuts_word(self.text, start) or _cuts_word(self.text, end):
+                nearest = _nearest_word_aligned_offset(self.text, start, length)
+                hint = (
+                    f"; the nearest span of that length that does not is "
+                    f"{self.text[nearest : nearest + length]!r} at offset {nearest}."
+                    if nearest is not None
+                    else "."
+                )
+                raise ValueError(
+                    f"Annotation span [{start}, {end}) covers {self.text[start:end]!r}, "
+                    f"which cuts through a word. Offsets count Unicode code points of "
+                    f"the step text{hint}"
                 )
         return self
+
+
+def _cuts_word(text: str, index: int) -> bool:
+    return 0 < index < len(text) and text[index - 1].isalnum() and text[index].isalnum()
+
+
+def _nearest_word_aligned_offset(text: str, offset: int, length: int) -> int | None:
+    aligned = [
+        start
+        for start in range(len(text) - length + 1)
+        if not _cuts_word(text, start) and not _cuts_word(text, start + length)
+    ]
+    return min(aligned, key=lambda start: abs(start - offset), default=None)
 
 
 class CustomRecipeDraft(_Model):

@@ -483,7 +483,9 @@ three.
 Each annotation pins its span via `offset` and `length`, counted in
 Python `str` units over the step `text` (Unicode code points; this
 matches what the platform accepted in our PATCH captures, including
-umlauts). Two ways to populate them:
+umlauts). A span must not start or end inside a word; the validation
+error for such a span names the nearest span of the same length that
+fits. Two ways to populate them:
 
 1. **Explicit (LLM-supplied)** — when `generate_recipe_structure` or
    `upload_custom_recipe` receives a `RecipeStep` with `annotations`, the
@@ -581,7 +583,10 @@ umlauts). Two ways to populate them:
      compound cannot be inferred), and umlaut plurals (`Apfel` →
      `Äpfel`).
 
-   To suppress inference, pass at least one explicit annotation. The
+   Explicit annotations replace inference, except for ingredient links:
+   a step without its own `INGREDIENT` annotation still gets inferred
+   ingredient links wherever they do not overlap an explicit span. To
+   suppress those, pass at least one explicit `INGREDIENT` annotation. The
    remaining MODE types (`turbo`, `rice_cooker`, `warm_up`, `blend`)
    currently have no text-pattern detector — the LLM must supply them
    explicitly.
