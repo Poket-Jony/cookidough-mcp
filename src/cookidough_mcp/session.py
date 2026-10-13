@@ -494,7 +494,12 @@ class CookidoughSession:
             utensils=list(details.utensils),
             notes=list(details.notes),
             ingredients=[
-                Ingredient(id=i.id, name=i.name, description=getattr(i, "description", None))
+                Ingredient(
+                    id=i.id,
+                    name=i.name,
+                    description=getattr(i, "description", None),
+                    preparation=getattr(i, "preparation", None),
+                )
                 for i in details.ingredients
             ],
             # ``getattr`` with empty defaults keeps pre-0.15 cookidoo-api
@@ -660,6 +665,7 @@ class CookidoughSession:
                     id=item.id,
                     name=item.name,
                     description=getattr(item, "description", None),
+                    preparation=getattr(item, "preparation", None),
                     is_owned=item.is_owned,
                     source=ShoppingItemSource.RECIPE,
                 )
@@ -684,7 +690,10 @@ class CookidoughSession:
                     image=r.image,
                     ingredients=[
                         Ingredient(
-                            id=i.id, name=i.name, description=getattr(i, "description", None)
+                            id=i.id,
+                            name=i.name,
+                            description=getattr(i, "description", None),
+                            preparation=getattr(i, "preparation", None),
                         )
                         for i in r.ingredients
                     ],
@@ -764,6 +773,7 @@ class CookidoughSession:
                 id=item.id,
                 name=item.name,
                 description=getattr(item, "description", None),
+                preparation=getattr(item, "preparation", None),
                 is_owned=item.is_owned,
                 source=ShoppingItemSource.RECIPE,
             )

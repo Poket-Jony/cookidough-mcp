@@ -157,7 +157,9 @@ async def test_get_recipe_details_maps_categories_collections_and_nutrition(
             total_time=1800,
             utensils=[],
             notes=[],
-            ingredients=[],
+            ingredients=[
+                _NS(id="i1", name="Butter", description="40 g", preparation=", in Stücken")
+            ],
             categories=[_NS(id="cat1", name="Hauptgerichte", notes="")],
             collections=[_NS(id="col1", name="Wochenplan-Hits", total_recipes=12)],
             nutrition_groups=[
@@ -179,6 +181,8 @@ async def test_get_recipe_details_maps_categories_collections_and_nutrition(
     )
 
     details = await session.get_recipe_details("r1")
+
+    assert details.ingredients[0].preparation == ", in Stücken"
 
     assert details.categories[0].id == "cat1"
     assert details.categories[0].notes is None
@@ -406,7 +410,15 @@ async def test_shopping_list_methods(
 ) -> None:
     session, fake = patched_session
     fake.get_ingredient_items = AsyncMock(
-        return_value=[_NS(id="i", name="n", description="d", is_owned=False)]
+        return_value=[
+            _NS(
+                id="i",
+                name="Butter",
+                description="40 g",
+                preparation=", in Stücken",
+                is_owned=False,
+            )
+        ]
     )
     fake.get_additional_items = AsyncMock(return_value=[_NS(id="a", name="n2", is_owned=True)])
     fake.get_shopping_list_recipes = AsyncMock(
@@ -429,6 +441,8 @@ async def test_shopping_list_methods(
 
     shopping = await session.get_shopping_list()
     assert shopping.ingredient_items[0].source == "recipe"
+    assert shopping.ingredient_items[0].preparation == ", in Stücken"
+    assert shopping.recipes[0].ingredients[0].preparation is None
     assert shopping.additional_items[0].source == "additional"
     assert shopping.recipes[0].id == "r1"
     assert shopping.recipes[0].ingredients[0].name == "Tomato"

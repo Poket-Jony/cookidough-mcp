@@ -59,6 +59,7 @@ class Ingredient(_Model):
     id: str = Field(min_length=1)
     name: str
     description: str | None = None
+    preparation: str | None = None
 
 
 class NutritionValue(_Model):
@@ -213,6 +214,7 @@ class ShoppingListItem(_Model):
     id: str = Field(min_length=1)
     name: str
     description: str | None = None
+    preparation: str | None = None
     is_owned: bool = False
     source: ShoppingItemSource
 
