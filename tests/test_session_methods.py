@@ -294,11 +294,27 @@ async def test_upload_custom_recipe_times_out_and_rolls_back_on_hanging_patch(
     assert rollbacks == ["stub-id-42"]
 
 
+@pytest.mark.parametrize(
+    ("origin", "language", "expected"),
+    [
+        ("https://cookidoo.de", "de-DE", "https://cookidoo.de/created-recipes/de-DE/r123"),
+        (
+            "https://cookidoo.es/foundation/es-ES",
+            "es-ES",
+            "https://cookidoo.es/created-recipes/es-ES/r123",
+        ),
+        (
+            "https://cookidoo.international/foundation/en",
+            "en",
+            "https://cookidoo.international/created-recipes/en/r123",
+        ),
+    ],
+)
 async def test_custom_recipe_public_url_logs_in_on_first_use(
-    monkeypatch: pytest.MonkeyPatch, settings: Any
+    monkeypatch: pytest.MonkeyPatch, settings: Any, origin: str, language: str, expected: str
 ) -> None:
     session = CookidoughSession(settings)
-    fake_client = _NS(localization=_NS(url="https://cookidoo.de", language="de-DE"))
+    fake_client = _NS(localization=_NS(url=origin, language=language))
 
     async def _login() -> Any:
         return fake_client
@@ -306,7 +322,19 @@ async def test_custom_recipe_public_url_logs_in_on_first_use(
     monkeypatch.setattr(session, "_ensure_logged_in", _login)
 
     url = await session._custom_recipe_public_url("r123")
-    assert url == "https://cookidoo.de/recipes/custom-recipes/r123"
+    assert url == expected
+
+
+async def test_custom_recipe_public_url_encodes_the_recipe_id(
+    monkeypatch: pytest.MonkeyPatch, settings: Any
+) -> None:
+    session = CookidoughSession(settings)
+    client = _NS(localization=_NS(url="https://cookidoo.es", language="es-ES"))
+    monkeypatch.setattr(session, "_ensure_logged_in", AsyncMock(return_value=client))
+
+    url = await session._custom_recipe_public_url("id/with?reserved#characters")
+
+    assert url == ("https://cookidoo.es/created-recipes/es-ES/id%2Fwith%3Freserved%23characters")
 
 
 async def test_get_subscription_returns_none(
