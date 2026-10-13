@@ -1435,7 +1435,10 @@ class CookidoughSession:
     async def _custom_recipe_public_url(self, recipe_id: str) -> str:
         client = await self._ensure_logged_in()
         localization = client.localization
-        return f"{_localization_origin(localization.url)}/recipes/custom-recipes/{recipe_id}"
+        return (
+            f"{_localization_origin(localization.url)}"
+            f"/created-recipes/{localization.language}/{quote(recipe_id, safe='')}"
+        )
 
     def _bearer_header(self) -> dict[str, str]:
         client = self._client
