@@ -481,9 +481,10 @@ three.
 - **`blend`** — Blending: `{ "speed": "<n>", "time": <s> }`
 
 Each annotation pins its span via `offset` and `length`, counted in
-Python `str` units over the step `text` (Unicode code points; this
-matches what the platform accepted in our PATCH captures, including
-umlauts). A span must not start or end inside a word; the validation
+Python `str` units over the step `text` (Unicode code points). The server
+converts these to UTF-16 units in the Cookidoo payload: BMP characters,
+including umlauts, keep the same positions, while emoji require two units.
+A span must not start or end inside a word; the validation
 error for such a span names the nearest span of the same length that
 fits. Two ways to populate them:
 
