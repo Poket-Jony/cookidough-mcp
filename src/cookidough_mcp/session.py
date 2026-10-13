@@ -2151,7 +2151,9 @@ def _step_to_payload(
     annotations = _step_annotations(step, ingredients, inferrer)
     payload: dict[str, Any] = {"type": "STEP", "text": step.text}
     if annotations:
-        payload["annotations"] = [_annotation_to_payload(annotation) for annotation in annotations]
+        payload["annotations"] = [
+            _annotation_to_payload(annotation, step.text) for annotation in annotations
+        ]
     return payload
 
 
@@ -2176,11 +2178,16 @@ def _step_annotations(
     return sorted([*explicit, *links], key=lambda a: a.offset)
 
 
-def _annotation_to_payload(annotation: StepAnnotation) -> dict[str, Any]:
+def _annotation_to_payload(annotation: StepAnnotation, text: str) -> dict[str, Any]:
+    start = annotation.offset
+    end = start + annotation.length
     payload: dict[str, Any] = {
         "type": annotation.type,
         "data": annotation.data.model_dump(),
-        "position": {"offset": annotation.offset, "length": annotation.length},
+        "position": {
+            "offset": len(text[:start].encode("utf-16-le")) // 2,
+            "length": len(text[start:end].encode("utf-16-le")) // 2,
+        },
     }
     mode_name = getattr(annotation, "name", None)
     if mode_name is not None:
