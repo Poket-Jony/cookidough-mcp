@@ -15,7 +15,7 @@ dependencies = [
     # range breaks fresh installs on every major.
     "mcp[cli]>=2,<3",
     # Capped: 0.18 replaced cookie persistence with `save_token`/`load_token`.
-    "cookidoo-api>=0.18,<0.19",
+    "cookidoo-api>=0.18,<0.20",
     "aiohttp>=3.9",
     "pydantic>=2.7",
     "pydantic-settings>=2.4",
