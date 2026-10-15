@@ -711,10 +711,10 @@ Your virtualenv is on the wrong `mcp` major. This server targets
 **`Access token request failed due to bad request, please check your email or refresh token`**
 Vorwerk retired the `grant_type=password` OAuth flow used by
 `cookidoo-api ≤ 0.17.0` in May 2026. This project requires `cookidoo-api
->=0.18,<0.19`, which ships the browser OAuth2 flow. If you see this error
+>=0.18,<0.20`, which ships the browser OAuth2 flow. If you see this error
 you're on an older version — run `./run.sh` (the install marker is keyed
 off `pyproject.toml`, so editing it forces a reinstall) or, for a manual
-install, `pip install --upgrade 'cookidoo-api>=0.18,<0.19'`.
+install, `pip install --upgrade 'cookidoo-api>=0.18,<0.20'`.
 
 **The server logs in again on every restart although persistence is configured**
 `COOKIDOUGH_COOKIES_FILE` was renamed to `COOKIDOUGH_TOKEN_FILE` when
