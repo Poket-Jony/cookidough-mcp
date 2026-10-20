@@ -11,6 +11,11 @@ matched as MODE spans; the inferrer requires the canonical platform phrase
 MODEs (``turbo``, ``rice_cooker``, ``warm_up``, ``blend``) have no
 text-pattern detector — the LLM must supply them explicitly.
 
+What a phrase becomes depends on the recipe's editor variant (see
+:mod:`.editor_rules`): ``<n>/Varoma/Stufe <n>`` is ``MODE/steaming`` in the TM7
+editor but a TTS with temperature ``varoma`` in the TM6 editor, and browning is
+only inferred for the TM7 editor.
+
 Soft speed (``Sanftrührstufe``, ``Stufe sanft``, ``speed soft``) is
 recognised and emitted as a TTS span with ``speed="soft"``. The TM7
 browning-mode stir pattern (``Anbratstufe`` / ``Bratstufe``) is recognised
@@ -22,7 +27,8 @@ matches ``Linkslauf``, ``sens inverse``, ``reverse``, ``counterclockwise``
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import Protocol
 
 from .annotation_models import (
@@ -40,6 +46,13 @@ from .annotation_models import (
     TemperatureData,
     TtsAnnotation,
     TtsAnnotationData,
+)
+from .editor_rules import (
+    VAROMA_TEMPERATURE,
+    EditorVariant,
+    annotation_problem,
+    editor_variant,
+    varoma_is_temperature,
 )
 
 _TTS_PATTERN = re.compile(
@@ -286,10 +299,14 @@ class BrowningStrategy:
 class TtsStrategy:
     """Detects ``<time>/Stufe <speed>`` spans, optionally carrying temperature.
 
-    A Varoma span is emitted as ``MODE/STEAMING``; everything else with an
-    explicit time + speed becomes a ``TTS`` annotation. The optional
+    A Varoma span is emitted as ``MODE/STEAMING`` for the TM7 editor and as a
+    ``TTS`` with temperature ``varoma`` for the TM6 editor; everything else with
+    an explicit time + speed becomes a ``TTS`` annotation. The optional
     ``°C`` / ``Linkslauf`` blocks are captured but not required.
     """
+
+    def __init__(self, variant: EditorVariant = EditorVariant.TM7) -> None:
+        self._variant = variant
 
     def detect(self, text: str, ingredients: Sequence[str]) -> list[StepAnnotation]:
         del ingredients
@@ -306,7 +323,8 @@ class TtsStrategy:
             offset = match.start()
             length = match.end() - match.start()
             reverse_matched = bool(match.group("reverse") or match.group("reverse_after"))
-            if match.group("varoma"):
+            varoma = bool(match.group("varoma"))
+            if varoma and not varoma_is_temperature(self._variant):
                 # Steaming.direction is required (defaults to CW). Linkslauf
                 # flips it to CCW; absent reverse keeps the CW default.
                 annotations.append(
@@ -325,7 +343,7 @@ class TtsStrategy:
                     )
                 )
                 continue
-            temperature_value = match.group("temperature")
+            temperature_value = VAROMA_TEMPERATURE if varoma else match.group("temperature")
             temperature = (
                 TemperatureData(value=temperature_value) if temperature_value is not None else None
             )
@@ -428,27 +446,72 @@ class IngredientStrategy:
         return annotations
 
 
-class AnnotationInferrer:
-    """Aggregates annotation strategies and removes overlapping spans."""
+@dataclass(frozen=True)
+class RejectedAnnotation:
+    """A recognised setting the platform's editor could not produce, with the reason."""
 
-    def __init__(self, strategies: tuple[AnnotationStrategy, ...] | None = None) -> None:
-        self._strategies = strategies if strategies is not None else default_strategies()
+    span: str
+    reason: str
+
+
+class AnnotationInferrer:
+    """Aggregates annotation strategies, drops what the editor cannot produce and overlaps."""
+
+    def __init__(
+        self,
+        strategies: tuple[AnnotationStrategy, ...] | None = None,
+        variant: EditorVariant = EditorVariant.TM7,
+    ) -> None:
+        self._variant = variant
+        self._strategies = strategies if strategies is not None else default_strategies(variant)
+
+    @classmethod
+    def for_tools(cls, tools: Iterable[str]) -> AnnotationInferrer:
+        """Inferrer for a recipe with these ``tools``, following its editor variant."""
+        variant = editor_variant(tools)
+        return cls(default_strategies(variant), variant)
 
     def infer(self, text: str, ingredients: Sequence[str]) -> list[StepAnnotation]:
+        return self.infer_checked(text, ingredients)[0]
+
+    def infer_checked(
+        self, text: str, ingredients: Sequence[str]
+    ) -> tuple[list[StepAnnotation], list[RejectedAnnotation]]:
+        """Return the usable annotations and the recognised settings that were dropped."""
         candidates: list[StepAnnotation] = []
+        invalid: list[tuple[StepAnnotation, str]] = []
         for strategy in self._strategies:
-            candidates.extend(strategy.detect(text, ingredients))
-        return _drop_overlaps(candidates)
+            for annotation in strategy.detect(text, ingredients):
+                problem = annotation_problem(annotation, self._variant)
+                if problem is None:
+                    candidates.append(annotation)
+                else:
+                    invalid.append((annotation, problem))
+        accepted = _drop_overlaps(candidates)
+        rejected = [
+            RejectedAnnotation(text[a.offset : a.offset + a.length], problem)
+            for a, problem in invalid
+            if not any(_overlaps(a, other) for other in accepted)
+        ]
+        return accepted, rejected
 
 
-def default_strategies() -> tuple[AnnotationStrategy, ...]:
-    """Return the default strategy set.
+def default_strategies(
+    variant: EditorVariant = EditorVariant.TM7,
+) -> tuple[AnnotationStrategy, ...]:
+    """Return the default strategy set for an editor variant.
 
     Order matters only for the overlap tie-breaker: MODE strategies
     (BROWNING, DOUGH) are checked before TTS so that a MODE span wins over
-    any partial TTS match starting at the same offset.
+    any partial TTS match starting at the same offset. Browning exists in
+    the TM7 editor only.
     """
-    return (BrowningStrategy(), DoughStrategy(), IngredientStrategy(), TtsStrategy())
+    mode_strategies: tuple[AnnotationStrategy, ...] = (
+        (BrowningStrategy(), DoughStrategy())
+        if variant is EditorVariant.TM7
+        else (DoughStrategy(),)
+    )
+    return (*mode_strategies, IngredientStrategy(), TtsStrategy(variant))
 
 
 def _combined_time_seconds(minutes: str | None, seconds: str | None) -> int:
@@ -588,6 +651,12 @@ def _browning_power(raw: str) -> BrowningPower:
     return BrowningPower.INTENSE if raw.lower() in {"intensiv", "intense"} else BrowningPower.GENTLE
 
 
+def _overlaps(first: StepAnnotation, second: StepAnnotation) -> bool:
+    return (
+        first.offset < second.offset + second.length and second.offset < first.offset + first.length
+    )
+
+
 def _drop_overlaps(annotations: list[StepAnnotation]) -> list[StepAnnotation]:
     annotations.sort(key=lambda a: (a.offset, -a.length))
     result: list[StepAnnotation] = []
@@ -606,6 +675,7 @@ __all__ = [
     "BrowningStrategy",
     "DoughStrategy",
     "IngredientStrategy",
+    "RejectedAnnotation",
     "TtsStrategy",
     "default_strategies",
 ]

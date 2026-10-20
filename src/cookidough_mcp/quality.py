@@ -12,8 +12,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar
 
-from .annotation_models import ModeName, StepAnnotation, StepAnnotationType
+from .annotation_models import ModeName, StepAnnotation, StepAnnotationType, TtsAnnotation
 from .annotations import AnnotationInferrer
+from .editor_rules import off_time_grid
 from .models import (
     CustomRecipeDraft,
     QualityIssue,
@@ -260,6 +261,55 @@ class IngredientReferenceRule(QualityRule):
         )
 
 
+class EditorLimitsRule(QualityRule):
+    """Flags settings in the step text that the platform's editor cannot produce.
+
+    Such settings are left out of the upload (a TTS temperature like 42 °C or a
+    turbo time of 3 s would fail the whole PATCH), so the step loses its guided
+    cooking. Times that the editor would round get an informational note.
+    """
+
+    name = "editor_limits"
+    weight = 8
+    max_deduction = 24
+
+    def evaluate(self, draft: CustomRecipeDraft) -> RuleResult:
+        inferrer = AnnotationInferrer.for_tools(draft.tools)
+        issues: list[QualityIssue] = []
+        dropped = 0
+        for index, step in enumerate(draft.steps):
+            annotations = list(step.annotations)
+            if not annotations:
+                annotations, rejected = inferrer.infer_checked(step.text, draft.ingredients)
+                for item in rejected:
+                    dropped += 1
+                    issues.append(
+                        QualityIssue(
+                            step_index=index,
+                            rule=self.name,
+                            severity=QualityIssueSeverity.WARNING,
+                            message=(
+                                f"{item.span!r} is not uploaded as a guided-cooking setting: "
+                                f"{item.reason}."
+                            ),
+                        )
+                    )
+            for annotation in annotations:
+                if isinstance(annotation, TtsAnnotation) and off_time_grid(annotation.data.time):
+                    issues.append(
+                        QualityIssue(
+                            step_index=index,
+                            rule=self.name,
+                            severity=QualityIssueSeverity.INFO,
+                            message=(
+                                f"{annotation.data.time} s is not on the editor's time grid "
+                                "(10 s steps up to 5 min, 30 s up to 20 min, whole minutes above)."
+                            ),
+                        )
+                    )
+        return RuleResult(issues=issues, deduction=min(self.weight * dropped, self.max_deduction))
+
+
 def default_rules() -> tuple[QualityRule, ...]:
     """Build a fresh tuple of the default rules.
 
@@ -272,6 +322,7 @@ def default_rules() -> tuple[QualityRule, ...]:
         AccessoryRule(),
         ParallelizationRule(),
         IngredientReferenceRule(),
+        EditorLimitsRule(),
     )
 
 
@@ -356,6 +407,7 @@ def _is_thermal_step(step: str) -> bool:
 
 __all__ = [
     "AccessoryRule",
+    "EditorLimitsRule",
     "IngredientReferenceRule",
     "ParallelizationRule",
     "QualityRule",
