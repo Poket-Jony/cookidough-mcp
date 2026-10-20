@@ -21,6 +21,10 @@ DEFAULT_DEVICE_MODELS: Final[tuple[DeviceModel, ...]] = ("TM7", "TM6", "TM5")
 # without a polling loop. Bump this if 5xx errors start appearing again.
 CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS: Final[float] = 3.0
 
+# How long the mode catalog read from the recipe editor page is reused before
+# the page is read again (modes change rarely; one extra GET per hour).
+MODE_CATALOG_TTL_SECONDS: Final[float] = 3600.0
+
 # Hard upper bound for any single upstream HTTP call. The MCP transport
 # layer expects tool calls to return promptly; without an explicit timeout
 # aiohttp would inherit a 5-minute default that masquerades as a hung tool.

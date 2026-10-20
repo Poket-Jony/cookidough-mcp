@@ -49,11 +49,13 @@ from .constants import (
     CUSTOM_RECIPE_PROPAGATION_DELAY_SECONDS,
     HTTP_TIMEOUT_SECONDS,
     MAX_RECIPE_IMAGE_BYTES,
+    MODE_CATALOG_TTL_SECONDS,
     RECIPE_FETCH_CONCURRENCY,
     SUGGEST_MIN_INGREDIENT_LENGTH,
     SUGGEST_SEARCH_CANDIDATE_FACTOR,
 )
 from .errors import AuthenticationError, NotFoundError, SessionClosedError, UpstreamApiError
+from .mode_catalog import BUILTIN_CATALOG, parse_editor_html
 from .models import (
     AdditionalItemRename,
     CalendarDay,
@@ -67,6 +69,7 @@ from .models import (
     CustomRecipeImageResult,
     CustomRecipeSummary,
     Ingredient,
+    ModeCatalog,
     NutritionInfo,
     NutritionValue,
     RecipeCategory,
@@ -226,6 +229,7 @@ class CookidoughSessionProtocol(Protocol):
     ) -> list[RecipeSearchResult]: ...
     async def list_bookmarked_recipes(self) -> list[RecipeSearchResult]: ...
     async def get_user_devices(self) -> tuple[list[str], list[str]]: ...
+    async def get_mode_catalog(self) -> ModeCatalog: ...
     async def aclose(self) -> None: ...
 
 
@@ -251,6 +255,8 @@ class CookidoughSession:
         # call should fail loud rather than silently spinning up a fresh
         # session (the MCP server lifespan treats ``aclose`` as terminal).
         self._closed = False
+        self._mode_catalog: ModeCatalog | None = None
+        self._mode_catalog_loaded_at = 0.0
 
     async def __aenter__(self) -> Self:
         await self._ensure_logged_in()
@@ -1059,6 +1065,42 @@ class CookidoughSession:
         page_results = await asyncio.gather(*(_page(i) for i in range(pages)))
         return [item for page in page_results for item in page]
 
+    async def get_mode_catalog(self) -> ModeCatalog:
+        """Read the modes the recipe editor offers; the built-in snapshot as fallback.
+
+        The editor page of any own recipe carries the settings dialog. The result
+        is cached for ``MODE_CATALOG_TTL_SECONDS``; the mainland-China deployment
+        has a different editor and always gets the snapshot.
+        """
+        now = time.monotonic()
+        if (
+            self._mode_catalog is not None
+            and now - self._mode_catalog_loaded_at < MODE_CATALOG_TTL_SECONDS
+        ):
+            return self._mode_catalog
+        catalog = BUILTIN_CATALOG
+        if not self._settings.is_china_market:
+            try:
+                catalog = await self._fetch_mode_catalog() or BUILTIN_CATALOG
+            except Exception as e:
+                # The catalog only refines inference; it must never block an
+                # upload, whatever the page or the network does.
+                _LOGGER.warning("Reading the mode catalog failed, using the snapshot: %s", e)
+        self._mode_catalog, self._mode_catalog_loaded_at = catalog, now
+        return catalog
+
+    async def _fetch_mode_catalog(self) -> ModeCatalog | None:
+        recipes = await self.list_custom_recipes()
+        if not recipes:
+            return None
+        url = (
+            f"{await self._custom_recipes_url()}/{recipes[0].recipe_id}"
+            "/edit/ingredients-and-preparation-steps"
+        )
+        async with self._authed_http("GET", url, accept="text/html") as response:
+            html = await response.text()
+        return parse_editor_html(html)
+
     async def list_custom_recipes(self) -> list[CustomRecipeSummary]:
         url = await self._custom_recipes_url()
         async with self._authed_http("GET", url) as response:
@@ -1258,7 +1300,8 @@ class CookidoughSession:
 
     async def _patch_custom_recipe(self, recipe_id: str, draft: CustomRecipeDraft) -> None:
         url = f"{await self._custom_recipes_url()}/{recipe_id}"
-        payload = _draft_to_payload(draft)
+        inferrer = AnnotationInferrer.for_tools(draft.tools, await self.get_mode_catalog())
+        payload = _draft_to_payload(draft, inferrer)
         if self._settings.is_china_market:
             payload = ChinaClient.update_payload(payload)
         async with self._authed_http("PATCH", url, json_body=payload) as response:
@@ -1450,6 +1493,7 @@ class CookidoughSession:
         method: str,
         url: str,
         json_body: dict[str, Any] | None = None,
+        accept: str = "application/json",
     ) -> AsyncIterator[ClientResponse]:
         await self._ensure_logged_in()
         http = self._http
@@ -1457,7 +1501,7 @@ class CookidoughSession:
             raise UpstreamApiError("HTTP session is not initialized.")
 
         async def _send() -> ClientResponse:
-            headers = {"Accept": "application/json", **self._bearer_header()}
+            headers = {"Accept": accept, **self._bearer_header()}
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
             if self._settings.is_china_market:
@@ -2121,7 +2165,9 @@ def _redact_error_body(body: str) -> str:
 def _draft_to_payload(
     draft: CustomRecipeDraft, inferrer: AnnotationInferrer | None = None
 ) -> dict[str, Any]:
-    annotation_inferrer = inferrer if inferrer is not None else AnnotationInferrer()
+    annotation_inferrer = (
+        inferrer if inferrer is not None else AnnotationInferrer.for_tools(draft.tools)
+    )
     # No image keys: the PATCH endpoint leaves omitted fields untouched
     # (verified live), so an update never wipes a previously uploaded photo.
     # Sending "image": null would reset it to the placeholder.

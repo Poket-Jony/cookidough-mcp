@@ -14,6 +14,7 @@ from pydantic import SecretStr
 
 from cookidough_mcp.config import Settings
 from cookidough_mcp.context import AppContext
+from cookidough_mcp.mode_catalog import BUILTIN_CATALOG
 from cookidough_mcp.models import (
     AdditionalItemRename,
     CalendarDay,
@@ -26,6 +27,7 @@ from cookidough_mcp.models import (
     CustomRecipeImageResult,
     CustomRecipeSummary,
     Ingredient,
+    ModeCatalog,
     RecipeDetails,
     RecipeDetailsResult,
     RecipeImage,
@@ -230,6 +232,9 @@ class FakeSession:
 
     async def list_custom_recipes(self) -> list[CustomRecipeSummary]:
         return [CustomRecipeSummary(recipe_id="cr1", name="Test")]
+
+    async def get_mode_catalog(self) -> ModeCatalog:
+        return BUILTIN_CATALOG
 
     async def upload_custom_recipe(self, draft: Any) -> tuple[str, str]:
         self.calls.upload_drafts.append(draft)

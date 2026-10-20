@@ -7,9 +7,14 @@ are conservative — emitting nothing is preferred over emitting wrong spans.
 ``Anbraten``, ``Dampfgaren``, ``Pürieren`` etc. as bare verbs are *not*
 matched as MODE spans; the inferrer requires the canonical platform phrase
 (``<n> Min./<temp> °C/(Leicht|Intensiv)`` for browning, ``<n>/Varoma/Stufe
-<n>`` for steaming, ``<n> Min./Teigstufe`` for dough/knead). The remaining
-MODEs (``turbo``, ``rice_cooker``, ``warm_up``, ``blend``) have no
-text-pattern detector — the LLM must supply them explicitly.
+<n>`` for steaming, ``<n> Min./Teigstufe`` for dough/knead) or the mode name
+followed by its values (``Turbo/1 Sek.``, ``Pürieren/1 Min./Stufe 8``,
+``[Reis kochen]``, see :class:`TitleModeStrategy`).
+
+What a phrase becomes depends on the recipe's editor variant (see
+:mod:`.editor_rules`): ``<n>/Varoma/Stufe <n>`` is ``MODE/steaming`` in the TM7
+editor but a TTS with temperature ``varoma`` in the TM6 editor, and browning is
+only inferred for the TM7 editor.
 
 Soft speed (``Sanftrührstufe``, ``Stufe sanft``, ``speed soft``) is
 recognised and emitted as a TTS span with ``speed="soft"``. The TM7
@@ -22,10 +27,14 @@ matches ``Linkslauf``, ``sens inverse``, ``reverse``, ``counterclockwise``
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Protocol
 
 from .annotation_models import (
+    BlendModeAnnotation,
+    BlendModeData,
     BrowningModeAnnotation,
     BrowningModeData,
     BrowningPower,
@@ -34,13 +43,29 @@ from .annotation_models import (
     IngredientAnnotation,
     IngredientAnnotationData,
     MixDirection,
+    ModeName,
+    RiceCookerModeAnnotation,
+    SteamingAccessory,
     SteamingModeAnnotation,
     SteamingModeData,
     StepAnnotation,
+    StepAnnotationType,
     TemperatureData,
     TtsAnnotation,
     TtsAnnotationData,
+    TurboModeAnnotation,
+    TurboModeData,
+    WarmUpModeAnnotation,
+    WarmUpModeData,
 )
+from .editor_rules import (
+    VAROMA_TEMPERATURE,
+    EditorVariant,
+    annotation_problem,
+    editor_variant,
+    varoma_is_temperature,
+)
+from .models import ModeCatalog
 
 _TTS_PATTERN = re.compile(
     # Require at least one time component up front so a bare "/Stufe N"
@@ -286,10 +311,14 @@ class BrowningStrategy:
 class TtsStrategy:
     """Detects ``<time>/Stufe <speed>`` spans, optionally carrying temperature.
 
-    A Varoma span is emitted as ``MODE/STEAMING``; everything else with an
-    explicit time + speed becomes a ``TTS`` annotation. The optional
+    A Varoma span is emitted as ``MODE/STEAMING`` for the TM7 editor and as a
+    ``TTS`` with temperature ``varoma`` for the TM6 editor; everything else with
+    an explicit time + speed becomes a ``TTS`` annotation. The optional
     ``°C`` / ``Linkslauf`` blocks are captured but not required.
     """
+
+    def __init__(self, variant: EditorVariant = EditorVariant.TM7) -> None:
+        self._variant = variant
 
     def detect(self, text: str, ingredients: Sequence[str]) -> list[StepAnnotation]:
         del ingredients
@@ -306,7 +335,8 @@ class TtsStrategy:
             offset = match.start()
             length = match.end() - match.start()
             reverse_matched = bool(match.group("reverse") or match.group("reverse_after"))
-            if match.group("varoma"):
+            varoma = bool(match.group("varoma"))
+            if varoma and not varoma_is_temperature(self._variant):
                 # Steaming.direction is required (defaults to CW). Linkslauf
                 # flips it to CCW; absent reverse keeps the CW default.
                 annotations.append(
@@ -325,7 +355,7 @@ class TtsStrategy:
                     )
                 )
                 continue
-            temperature_value = match.group("temperature")
+            temperature_value = VAROMA_TEMPERATURE if varoma else match.group("temperature")
             temperature = (
                 TemperatureData(value=temperature_value) if temperature_value is not None else None
             )
@@ -368,6 +398,212 @@ class DoughStrategy:
                 )
             )
         return annotations
+
+
+_TITLE_ALIASES: dict[ModeName, tuple[str, ...]] = {
+    ModeName.DOUGH: ("Teig kneten", "Teigmodus", "Kneten", "Dough", "Knead"),
+    ModeName.TURBO: ("Turbo",),
+    ModeName.BLEND: ("Pürieren", "Blend"),
+    ModeName.WARM_UP: ("Erwärmen", "Warm up", "Warm-up"),
+    ModeName.RICE_COOKER: ("Reis kochen", "Rice cooker"),
+    ModeName.STEAMING: ("Dampfgaren", "Steaming"),
+    ModeName.BROWNING: ("Anbraten", "Browning"),
+}
+_TITLE_TO_MODE = {
+    title.casefold(): mode for mode, titles in _TITLE_ALIASES.items() for title in titles
+}
+_TOKEN_PATTERNS: dict[str, re.Pattern[str]] = {
+    "time": re.compile(
+        r"(?:(?P<minutes>\d+)\s*(?:Min\.?|minutes?|minuten?)"
+        r"(?:\s*(?P<seconds>\d+)\s*(?:Sek\.?|seconds?|sekunden?))?"
+        r"|(?P<only_seconds>\d+(?:[.,]5)?)\s*(?:Sek\.?|sec\.?|seconds?|sekunden?))",
+        re.IGNORECASE,
+    ),
+    "temperature": re.compile(r"(?P<temperature>\d{2,3})\s*°\s*C", re.IGNORECASE),
+    "speed": re.compile(
+        r"(?:(?:Stufe|speed|level)\s*(?P<speed>\d+(?:[.,]5)?|sanft|soft)|(?P<soft>Sanftrührstufe))",
+        re.IGNORECASE,
+    ),
+    "reverse": re.compile(
+        r"Linkslauf|sens\s+inverse|reverse|counter[-\s]?clockwise|anticlockwise", re.IGNORECASE
+    ),
+    "pulses": re.compile(r"(?P<pulses>\d+)\s*(?:x|\u00d7|-?mal|times)", re.IGNORECASE),
+    "accessory": re.compile(
+        r"(?:im\s+|in\s+the\s+)?(?P<accessory>Varoma|Gareinsatz|simmering\s+basket|beidem|both)",
+        re.IGNORECASE,
+    ),
+    "power": re.compile(r"(?P<power>Leicht|Intensiv|Gentle|Intense)", re.IGNORECASE),
+}
+_TOKEN_ALTERNATION = "|".join(
+    re.sub(r"\(\?P<\w+>", "(?:", pattern.pattern) for pattern in _TOKEN_PATTERNS.values()
+)
+
+
+@lru_cache(maxsize=8)
+def _title_mode_pattern(titles: tuple[str, ...]) -> re.Pattern[str]:
+    alternation = "|".join(
+        re.escape(title).replace(r"\ ", r"\s+") for title in sorted(titles, key=len, reverse=True)
+    )
+    return re.compile(
+        rf"(?P<open>\[\s*)?(?<![\w-])(?P<title>{alternation})(?![\w-])"
+        rf"(?P<params>(?:\s*/\s*(?:{_TOKEN_ALTERNATION}))*)"
+        r"(?(open)\s*\])",
+        re.IGNORECASE,
+    )
+
+
+_ACCESSORIES = {
+    "varoma": SteamingAccessory.VAROMA,
+    "gareinsatz": SteamingAccessory.SIMMERING_BASKET,
+    "simmering basket": SteamingAccessory.SIMMERING_BASKET,
+    "beidem": SteamingAccessory.VAROMA_AND_SIMMERING_BASKET,
+    "both": SteamingAccessory.VAROMA_AND_SIMMERING_BASKET,
+}
+_DEFAULT_BROWNING_SECONDS = 600
+
+
+class TitleModeStrategy:
+    """Detects modes written as their name followed by ``/``-separated values.
+
+    ``Teig kneten/2 Min.``, ``Turbo/0,5 Sek.`` (TM7 also ``Turbo/1 Sek./3x``),
+    ``Pürieren/1 Min./Stufe 8``, ``Erwärmen/65°C/Stufe 1``,
+    ``Dampfgaren/20 Min./Stufe 1/im Varoma`` and ``Anbraten/10 Min./160°C/Leicht``,
+    plus English names. A name without values is only a mode when it is
+    bracketed (``[Reis kochen]``), so prose like "den Reis kochen" stays text.
+    Missing required values (a blend without speed) yield no annotation;
+    values outside the editor's limits are rejected by the inferrer.
+    ``extra_titles`` adds the platform's own (localised) mode names.
+    """
+
+    def __init__(self, extra_titles: Mapping[str, ModeName] | None = None) -> None:
+        self._titles = {
+            **_TITLE_TO_MODE,
+            **{title.casefold(): mode for title, mode in (extra_titles or {}).items()},
+        }
+        self._pattern = _title_mode_pattern(tuple(sorted(self._titles)))
+
+    def detect(self, text: str, ingredients: Sequence[str]) -> list[StepAnnotation]:
+        del ingredients
+        annotations: list[StepAnnotation] = []
+        for match in self._pattern.finditer(text):
+            params = match.group("params")
+            if not params and not match.group("open"):
+                continue
+            mode = self._titles[re.sub(r"\s+", " ", match.group("title")).casefold()]
+            values = _parse_mode_values(params)
+            if values is None:
+                continue
+            annotation = _mode_annotation(
+                mode, values, offset=match.start(), length=match.end() - match.start()
+            )
+            if annotation is not None:
+                annotations.append(annotation)
+        return annotations
+
+
+def _parse_mode_values(params: str) -> dict[str, re.Match[str]] | None:
+    found: dict[str, re.Match[str]] = {}
+    for piece in (part.strip() for part in params.split("/")):
+        if not piece:
+            continue
+        for kind, pattern in _TOKEN_PATTERNS.items():
+            match = pattern.fullmatch(piece)
+            if match is not None:
+                if kind in found:
+                    return None
+                found[kind] = match
+                break
+        else:
+            return None
+    return found
+
+
+def _token_seconds(match: re.Match[str]) -> float:
+    only_seconds = match.group("only_seconds")
+    if only_seconds is not None:
+        return float(only_seconds.replace(",", "."))
+    return _combined_time_seconds(match.group("minutes"), match.group("seconds"))
+
+
+def _token_speed(match: re.Match[str]) -> str:
+    speed = match.group("speed")
+    if speed is None or speed.lower() in _SOFT_SPEED_TOKENS:
+        return _SOFT_SPEED
+    return speed.replace(",", ".").removesuffix(".0")
+
+
+def _mode_annotation(
+    mode: ModeName, values: dict[str, re.Match[str]], offset: int, length: int
+) -> StepAnnotation | None:
+    time = _token_seconds(values["time"]) if "time" in values else None
+    speed = _token_speed(values["speed"]) if "speed" in values else None
+    temperature = (
+        TemperatureData(value=values["temperature"].group("temperature"))
+        if "temperature" in values
+        else None
+    )
+    allowed: dict[ModeName, frozenset[str]] = {
+        ModeName.DOUGH: frozenset({"time"}),
+        ModeName.TURBO: frozenset({"time", "pulses"}),
+        ModeName.BLEND: frozenset({"time", "speed"}),
+        ModeName.WARM_UP: frozenset({"temperature", "speed"}),
+        ModeName.RICE_COOKER: frozenset(),
+        ModeName.STEAMING: frozenset({"time", "speed", "reverse", "accessory"}),
+        ModeName.BROWNING: frozenset({"time", "temperature", "power"}),
+    }
+    if not set(values) <= allowed[mode]:
+        return None
+    if mode is ModeName.DOUGH and time is not None and time.is_integer():
+        return DoughModeAnnotation(data=DoughModeData(time=int(time)), offset=offset, length=length)
+    if mode is ModeName.TURBO and time is not None:
+        pulses = values["pulses"].group("pulses") if "pulses" in values else None
+        return TurboModeAnnotation(
+            data=TurboModeData(time=time, pulseCount=int(pulses) if pulses else None),
+            offset=offset,
+            length=length,
+        )
+    if mode is ModeName.BLEND and time is not None and speed is not None and time.is_integer():
+        return BlendModeAnnotation(
+            data=BlendModeData(speed=speed, time=int(time)), offset=offset, length=length
+        )
+    if mode is ModeName.WARM_UP and temperature is not None:
+        return WarmUpModeAnnotation(
+            data=WarmUpModeData(speed=speed or _SOFT_SPEED, temperature=temperature),
+            offset=offset,
+            length=length,
+        )
+    if mode is ModeName.RICE_COOKER:
+        return RiceCookerModeAnnotation(offset=offset, length=length)
+    if mode is ModeName.STEAMING and time is not None and speed is not None and time.is_integer():
+        accessory = values["accessory"].group("accessory") if "accessory" in values else "varoma"
+        return SteamingModeAnnotation(
+            data=SteamingModeData(
+                time=int(time),
+                speed=speed,
+                direction=(
+                    MixDirection.COUNTER_CLOCKWISE
+                    if "reverse" in values
+                    else MixDirection.CLOCKWISE
+                ),
+                accessory=_ACCESSORIES[re.sub(r"\s+", " ", accessory).casefold()],
+            ),
+            offset=offset,
+            length=length,
+        )
+    if mode is ModeName.BROWNING and temperature is not None:
+        power = values["power"].group("power") if "power" in values else "Gentle"
+        if time is not None and not time.is_integer():
+            return None
+        return BrowningModeAnnotation(
+            data=BrowningModeData(
+                time=int(time) if time is not None else _DEFAULT_BROWNING_SECONDS,
+                temperature=temperature,
+                power=_browning_power(power),
+            ),
+            offset=offset,
+            length=length,
+        )
+    return None
 
 
 class IngredientStrategy:
@@ -428,27 +664,105 @@ class IngredientStrategy:
         return annotations
 
 
-class AnnotationInferrer:
-    """Aggregates annotation strategies and removes overlapping spans."""
+@dataclass(frozen=True)
+class RejectedAnnotation:
+    """A recognised setting the platform's editor could not produce, with the reason."""
 
-    def __init__(self, strategies: tuple[AnnotationStrategy, ...] | None = None) -> None:
-        self._strategies = strategies if strategies is not None else default_strategies()
+    span: str
+    reason: str
+
+
+class AnnotationInferrer:
+    """Aggregates annotation strategies, drops what the editor cannot produce and overlaps."""
+
+    def __init__(
+        self,
+        strategies: tuple[AnnotationStrategy, ...] | None = None,
+        variant: EditorVariant = EditorVariant.TM7,
+        offered: frozenset[ModeName] | None = None,
+    ) -> None:
+        self._variant = variant
+        self._offered = offered
+        self._strategies = strategies if strategies is not None else default_strategies(variant)
+
+    @classmethod
+    def for_tools(
+        cls, tools: Iterable[str], catalog: ModeCatalog | None = None
+    ) -> AnnotationInferrer:
+        """Inferrer for a recipe with these ``tools``, following its editor variant.
+
+        With a ``catalog`` the platform's own mode names are recognised too, and
+        modes the platform no longer offers are rejected.
+        """
+        variant = editor_variant(tools)
+        if catalog is None:
+            return cls(default_strategies(variant), variant)
+        known = {mode.value for mode in ModeName}
+        titles = {m.title: ModeName(m.name) for m in catalog.modes if m.name in known}
+        return cls(default_strategies(variant, titles), variant, offered=frozenset(titles.values()))
 
     def infer(self, text: str, ingredients: Sequence[str]) -> list[StepAnnotation]:
+        return self.infer_checked(text, ingredients)[0]
+
+    def infer_checked(
+        self, text: str, ingredients: Sequence[str]
+    ) -> tuple[list[StepAnnotation], list[RejectedAnnotation]]:
+        """Return the usable annotations and the recognised settings that were dropped."""
         candidates: list[StepAnnotation] = []
+        invalid: list[tuple[StepAnnotation, str]] = []
         for strategy in self._strategies:
-            candidates.extend(strategy.detect(text, ingredients))
-        return _drop_overlaps(candidates)
+            for annotation in strategy.detect(text, ingredients):
+                problem = self._problem(annotation)
+                if problem is None:
+                    candidates.append(annotation)
+                else:
+                    invalid.append((annotation, problem))
+        # A mode the editor cannot produce must not leave its inner time/speed
+        # behind as a TTS ("Dampfgaren/20 Min./Stufe 1" on a TM6 recipe).
+        rejected_modes = [a for a, _ in invalid if a.type == StepAnnotationType.MODE]
+        candidates = [
+            a
+            for a in candidates
+            if a.type == StepAnnotationType.INGREDIENT
+            or not any(_overlaps(a, mode) for mode in rejected_modes)
+        ]
+        accepted = _drop_overlaps(candidates)
+        rejected = [
+            RejectedAnnotation(text[a.offset : a.offset + a.length], problem)
+            for a, problem in invalid
+            if not any(_overlaps(a, other) for other in accepted)
+        ]
+        return accepted, rejected
+
+    def _problem(self, annotation: StepAnnotation) -> str | None:
+        mode = getattr(annotation, "name", None)
+        if self._offered is not None and isinstance(mode, ModeName) and mode not in self._offered:
+            return f"the platform no longer offers the {mode} mode"
+        return annotation_problem(annotation, self._variant)
 
 
-def default_strategies() -> tuple[AnnotationStrategy, ...]:
-    """Return the default strategy set.
+def default_strategies(
+    variant: EditorVariant = EditorVariant.TM7,
+    extra_titles: Mapping[str, ModeName] | None = None,
+) -> tuple[AnnotationStrategy, ...]:
+    """Return the default strategy set for an editor variant.
 
     Order matters only for the overlap tie-breaker: MODE strategies
     (BROWNING, DOUGH) are checked before TTS so that a MODE span wins over
-    any partial TTS match starting at the same offset.
+    any partial TTS match starting at the same offset. Browning exists in
+    the TM7 editor only.
     """
-    return (BrowningStrategy(), DoughStrategy(), IngredientStrategy(), TtsStrategy())
+    mode_strategies: tuple[AnnotationStrategy, ...] = (
+        (BrowningStrategy(), DoughStrategy())
+        if variant is EditorVariant.TM7
+        else (DoughStrategy(),)
+    )
+    return (
+        TitleModeStrategy(extra_titles),
+        *mode_strategies,
+        IngredientStrategy(),
+        TtsStrategy(variant),
+    )
 
 
 def _combined_time_seconds(minutes: str | None, seconds: str | None) -> int:
@@ -588,6 +902,12 @@ def _browning_power(raw: str) -> BrowningPower:
     return BrowningPower.INTENSE if raw.lower() in {"intensiv", "intense"} else BrowningPower.GENTLE
 
 
+def _overlaps(first: StepAnnotation, second: StepAnnotation) -> bool:
+    return (
+        first.offset < second.offset + second.length and second.offset < first.offset + first.length
+    )
+
+
 def _drop_overlaps(annotations: list[StepAnnotation]) -> list[StepAnnotation]:
     annotations.sort(key=lambda a: (a.offset, -a.length))
     result: list[StepAnnotation] = []
@@ -606,6 +926,8 @@ __all__ = [
     "BrowningStrategy",
     "DoughStrategy",
     "IngredientStrategy",
+    "RejectedAnnotation",
+    "TitleModeStrategy",
     "TtsStrategy",
     "default_strategies",
 ]

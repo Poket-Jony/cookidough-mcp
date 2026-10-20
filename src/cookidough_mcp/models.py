@@ -6,7 +6,7 @@ submodels, the discriminated union etc.) live in
 """
 
 from enum import StrEnum
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -18,6 +18,7 @@ from pydantic import (
 
 from .annotation_models import StepAnnotation
 from .constants import DEFAULT_DEVICE_MODELS, DeviceModel
+from .editor_rules import annotation_problem, editor_variant
 
 
 class ShoppingItemSource(StrEnum):
@@ -318,11 +319,12 @@ class CustomRecipeDraft(_Model):
             "This field is NOT a list of accessories used inside the bowl "
             "(Mixtopf, Spatel, Messbecher, Varoma, Schmetterling, ...); "
             "those belong in the step text and are rejected here. "
-            "Pick the lowest TM generation that can actually run every "
-            "step: TM5 has no Sanftrührstufe (speed='soft') and no "
-            "browning/steaming/dough/warm_up/blend/turbo/rice_cooker MODE; "
-            "rice_cooker is TM7-only. When in doubt list multiple "
-            "(e.g. ['TM7', 'TM6'])."
+            "The list decides the platform editor the recipe is built for: "
+            "with 'TM7' in it the TM7 editor, otherwise the TM6 editor. "
+            "Only the TM7 editor offers the browning and steaming MODEs; "
+            "only the TM6 editor offers Varoma as a TTS temperature "
+            "(with 'TM7', write Varoma steps as steaming). dough, turbo, "
+            "blend, warm_up and rice_cooker exist in both."
         ),
     )
     hints: list[str] = Field(default_factory=list)
@@ -341,6 +343,17 @@ class CustomRecipeDraft(_Model):
                 "total_minutes must be greater than or equal to prep_minutes "
                 f"(got total={self.total_minutes}, prep={self.prep_minutes})."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _annotations_fit_editor(self) -> Self:
+        variant = editor_variant(self.tools)
+        for index, step in enumerate(self.steps):
+            for annotation in step.annotations:
+                problem = annotation_problem(annotation, variant)
+                if problem is not None:
+                    span = step.text[annotation.offset : annotation.offset + annotation.length]
+                    raise ValueError(f"Step {index}, annotation on {span!r}: {problem}.")
         return self
 
     @property
@@ -366,6 +379,53 @@ class QualityReport(_Model):
     threshold: int = Field(ge=0, le=100)
     meets_bar: bool
     issues: list[QualityIssue] = Field(default_factory=list)
+
+
+class ThermomixMode(_Model):
+    """One mode the platform's recipe editor offers."""
+
+    name: str = Field(min_length=1, description="Lowercase MODE name, e.g. 'dough'.")
+    title: str = Field(description="Localised name the platform shows, e.g. 'Teig kneten'.")
+    tm7_only: bool = Field(description="Offered by the TM7 editor only.")
+
+
+class ModeCatalog(_Model):
+    """What the platform's recipe editor offers, read from its settings dialog."""
+
+    modes: list[ThermomixMode] = Field(default_factory=list)
+    speeds: list[str] = Field(default_factory=list)
+    temperatures: list[str] = Field(default_factory=list)
+    turbo_times: list[str] = Field(default_factory=list)
+    pulse_counts: list[str] = Field(default_factory=list)
+    steaming_accessories: dict[str, str] = Field(default_factory=dict)
+    browning_powers: dict[str, str] = Field(default_factory=dict)
+    source: Literal["live", "builtin"] = Field(
+        description="'live' when read from the platform, 'builtin' for the shipped snapshot."
+    )
+
+
+class ModeSpelling(_Model):
+    """How to write a mode in plain step text, with the values the editor allows."""
+
+    name: str
+    title: str
+    example: str
+    limits: str
+
+
+class AvailableModes(_Model):
+    """Modes usable in a recipe with the given tools, plus what is not."""
+
+    editor_variant: Literal["TM6", "TM7"]
+    modes: list[ModeSpelling] = Field(default_factory=list)
+    unavailable: list[str] = Field(
+        default_factory=list, description="Offered by the platform, but not in this editor."
+    )
+    unsupported: list[str] = Field(
+        default_factory=list,
+        description="Offered by the platform, but not yet known to this server.",
+    )
+    source: Literal["live", "builtin"]
 
 
 class UploadResult(_Model):

@@ -110,6 +110,8 @@ src/cookidough_mcp/
 ├── quality.py            # Recipe quality rule strategy set
 ├── annotation_models.py  # Guided-cooking annotation DTOs (discriminated union)
 ├── annotations.py        # Annotation inferrer (text patterns → StepAnnotation)
+├── editor_rules.py       # Editor variants (TM6/TM7) and value limits per annotation
+├── mode_catalog.py       # Mode catalog parsed from the recipe editor page
 ├── step_text.py          # formattedText → plain text (markup, appliance icons)
 ├── web_import.py         # recipe-scrapers adapter → CustomRecipeDraft
 ├── resources.py          # MCP resources + prompts (read-only context, workflows)

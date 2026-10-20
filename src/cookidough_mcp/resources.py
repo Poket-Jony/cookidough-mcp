@@ -43,6 +43,12 @@ def register(mcp: MCPServer, app: AppContext) -> None:
         recipes = await app.session.list_custom_recipes()
         return json.dumps([recipe.model_dump(mode="json") for recipe in recipes], indent=2)
 
+    @mcp.resource("cookidough://modes", mime_type="application/json")
+    async def modes() -> str:
+        """The appliance modes, speeds and temperatures the platform's recipe editor offers."""
+        catalog = await app.session.get_mode_catalog()
+        return catalog.model_dump_json(indent=2)
+
     @mcp.prompt()
     def plan_week(servings: int = 2, diet: str = "", max_minutes_per_meal: int = 45) -> str:
         """Plan a week of dinners and put everything on the shopping list."""

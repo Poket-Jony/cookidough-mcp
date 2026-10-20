@@ -12,10 +12,13 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import Field
 
-from ..constants import MAX_RECIPE_DETAILS_PER_CALL, DeviceModel
+from ..constants import DEFAULT_DEVICE_MODELS, MAX_RECIPE_DETAILS_PER_CALL, DeviceModel
 from ..context import AppContext, ToolContext, get_context
+from ..editor_rules import editor_variant
 from ..errors import QualityGateError
+from ..mode_catalog import available_modes
 from ..models import (
+    AvailableModes,
     CustomRecipeDetails,
     CustomRecipeDraft,
     CustomRecipeImageResult,
@@ -71,6 +74,20 @@ def register(mcp: MCPServer) -> None:
         Steps come back as plain text without their guided-cooking annotations.
         """
         return await get_context(ctx).session.get_custom_recipe_details(recipe_id)
+
+    @mcp.tool()
+    async def get_thermomix_modes(
+        ctx: ToolContext, tools: list[DeviceModel] | None = None
+    ) -> AvailableModes:
+        """List the appliance modes usable in a recipe and how to write them in step text.
+
+        Read live from the platform's recipe editor, so added or removed modes show
+        up. ``tools`` are the recipe's device generations (default: all three); with
+        'TM7' the TM7 editor rules apply. Normal settings such as
+        '3 Min./120°C/Stufe 1' always work in addition.
+        """
+        catalog = await get_context(ctx).session.get_mode_catalog()
+        return available_modes(catalog, editor_variant(tools or DEFAULT_DEVICE_MODELS))
 
     @mcp.tool()
     async def generate_recipe_structure(

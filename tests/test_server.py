@@ -17,6 +17,7 @@ _EXPECTED_TOOL_NAMES = frozenset(
         "get_subscription",
         "get_recipe_details",
         "get_custom_recipe_details",
+        "get_thermomix_modes",
         "list_managed_collections",
         "add_managed_collection",
         "remove_managed_collection",
@@ -93,6 +94,7 @@ _EXPECTED_RESOURCE_URIS = frozenset(
         "cookidough://shopping-list",
         "cookidough://calendar/current-week",
         "cookidough://custom-recipes",
+        "cookidough://modes",
     }
 )
 

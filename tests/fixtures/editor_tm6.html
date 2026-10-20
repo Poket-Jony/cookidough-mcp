@@ -1,0 +1,332 @@
+<cr-edit-tabs
+  
+  class="cr-edit-tabs"
+  success-message="Zutaten und Rezeptschritte wurden erfolgreich gespeichert"
+  recipe-id="RECIPE_ID"
+  annotate-api-url="/created-recipes/de-DE/annotate/steps"
+  annotate-error-message="Ein Fehler ist aufgetreten. Bitte versuche es später erneut."
+  annotate-info-message="Keine Markierungen gefunden"
+  annotate-warning-message="Überprüfe die gelben Markierungen anhand der Zutatenliste"
+  structured-ingredient-api="/created-recipes/de-DE/annotate/ingredients">
+<cr-tts-modal>
+  <cr-popover-modal delete-trigger-id="delete-tts-modal"
+      delete-success-message="Koch-Einstellung wurde gelöscht" hidden>
+    <span class="cr-popover-modal__arrow"></span>
+    <div class="cr-popover-modal__wrapper">
+      <div class="cr-popover-modal__header">
+        <button class="cr-popover-modal__basket button--icon button--tertiary">
+          <span class="icon icon--delete" aria-hidden="true"></span>
+        </button>
+        <button type="button" class="cr-popover-modal__close"></button>
+        <button type="submit" class="cr-popover-modal__save button--icon button--primary" disabled>
+          <span class="icon icon--checkmark" aria-hidden="true"></span>
+        </button>
+        <p class="cr-popover-modal__title--add">Einstellung hinzufügen</p>
+        <p class="cr-popover-modal__title--edit">Einstellung bearbeiten</p>
+      </div>
+      <div class="cr-popover-modal__content">
+        <core-content-navigation class="cr-popover-modal__navigation">
+          <div class="cr-popover-modal__tablist" role="tablist" aria-label="Settings tablist">
+            <button class="cr-popover-modal__tab" role="tab" aria-selected="true" aria-controls="tts-tabpanel" id="manual-tab">
+              Manuell
+            </button>
+            <button class="cr-popover-modal__tab" role="tab" aria-selected="false" aria-controls="tts-tabpanel" id="modes-tab" tabindex="-1">
+              Modi
+            </button>
+          </div>
+          <div class="cr-popover-modal__tabpanel" role="tabpanel" aria-labelledby="manual-tab, modes-tab" id="tts-tabpanel" tabindex="0">
+            <core-scrollbar>
+              <div class="core-scrollbar__content">
+                <core-accordion class="cr-tts-modal__sections">
+                  <cr-tts-mode hidden>
+  <cr-select-input>
+    <core-expand class="cr-select-input__expand" animation-time="0.4">
+      <button class="core-expand__header" aria-expanded="false" aria-controls="setting-panel">
+        <p class="icon" aria-hidden="true"></p>
+        <p class="core-expand__title"></p>
+      </button>
+      <div class="core-expand__content">
+        <div class="cr-select-input__radio-group cr-select-input__radio-group--list cr-select-input__radio-group--list-separated">
+            <input type="radio" id="mode-radio-dough" name="mode" value="dough" checked header-title="Teig kneten" header-icon="dough">
+            <label   for="mode-radio-dough"><span class='icon icon--dough' aria-hidden='true'></span>Teig kneten</label>
+            <input type="radio" id="mode-radio-browning" name="mode" value="browning"  header-title="Anbraten" header-icon="temperature-high">
+            <label tm7-mode  for="mode-radio-browning"><span class='icon icon--temperature-high' aria-hidden='true'></span>Anbraten</label>
+            <input type="radio" id="mode-radio-turbo" name="mode" value="turbo"  header-title="Turbo" header-icon="turbo">
+            <label   for="mode-radio-turbo"><span class='icon icon--turbo' aria-hidden='true'></span>Turbo</label>
+            <input type="radio" id="mode-radio-steaming" name="mode" value="steaming"  header-title="Dampfgaren" header-icon="steaming">
+            <label tm7-mode  for="mode-radio-steaming"><span class='icon icon--steaming' aria-hidden='true'></span>Dampfgaren</label>
+            <input type="radio" id="mode-radio-blend" name="mode" value="blend"  header-title="Pürieren" header-icon="cold-blending">
+            <label   for="mode-radio-blend"><span class='icon icon--cold-blending' aria-hidden='true'></span>Pürieren</label>
+            <input type="radio" id="mode-radio-warm-up" name="mode" value="warm_up"  header-title="Erwärmen" header-icon="warm-up">
+            <label   for="mode-radio-warm-up"><span class='icon icon--warm-up' aria-hidden='true'></span>Erwärmen</label>
+            <input type="radio" id="mode-radio-rice-cooker" name="mode" value="rice_cooker"  header-title="Reis kochen" header-icon="boiled-rice">
+            <label   for="mode-radio-rice-cooker"><span class='icon icon--boiled-rice' aria-hidden='true'></span>Reis kochen</label>
+        </div>
+      </div>
+    </core-expand>
+  </cr-select-input>
+  <hr class="separator--silver-20">
+</cr-tts-mode>
+                  <cr-tts-time
+  hidden
+  class="cr-popover-modal__time"
+  minutes-translation="Min."
+  seconds-translation="Sek."
+  adjust-time-message="Die Zeit wurde auf die nächste zulässige Kombination korrigiert.">
+  <div class="cr-popover-modal__input">
+    <label>Min.</label>
+    <input placeholder="0" type="number" inputmode="numeric" aria-describedby="minutes">
+  </div>
+  <div class="cr-popover-modal__input">
+    <label>Sek.</label>
+    <input placeholder="0" type="number" inputmode="numeric" aria-describedby="seconds">
+  </div>
+  <cr-select-input>
+    <core-expand class="cr-select-input__expand" animation-time="0.4">
+      <button class="core-expand__header" aria-expanded="false" aria-controls="setting-panel">
+        <p class="icon" aria-hidden="true"></p>
+        <p class="core-expand__title"></p>
+      </button>
+      <div class="core-expand__content">
+        <div class="cr-select-input__radio-group cr-select-input__radio-group--list">
+          <input type="radio" id="time-radio-0.5" name="time" value="0.5" header-title="0.5 Sek." checked>
+          <label for="time-radio-0.5">0.5 Sek.</label>
+          <input type="radio" id="time-radio-1" name="time" value="1" header-title="1 Sek.">
+          <label for="time-radio-1">1 Sek.</label>
+          <input type="radio" id="time-radio-2" name="time" value="2" header-title="2 Sek.">
+          <label for="time-radio-2">2 Sek.</label>
+        </div>
+      </div>
+    </core-expand>
+  </cr-select-input>
+</cr-tts-time>
+                  <cr-tts-temperature
+  hidden
+  unit="C"
+  varoma-translation="Varoma"
+  adjust-temperature-with-speed-message="Die Temperatur wurde ausgeschaltet, da das Erhitzen nur bis Stufe 6 möglich ist.">
+  <cr-select-input>
+    <core-expand class="cr-select-input__expand" animation-time="0.4">
+      <button class="core-expand__header" aria-expanded="false" aria-controls="setting-panel">
+        <p class="core-expand__title"></p>
+      </button>
+      <div class="core-expand__content">
+        <div class="cr-select-input__radio-group">
+          <input type="radio" id="temperature-radio-OFF" name="temperature" value="OFF" header-title="Temperatur AUS">
+          <label for="temperature-radio-OFF">AUS</label>
+            <input type="radio" id="temperature-radio-37" name="temperature" value="37" header-title="37 °C">
+            <label for="temperature-radio-37">37°</label>
+            <input type="radio" id="temperature-radio-40" name="temperature" value="40" header-title="40 °C">
+            <label for="temperature-radio-40">40°</label>
+            <input type="radio" id="temperature-radio-45" name="temperature" value="45" header-title="45 °C">
+            <label for="temperature-radio-45">45°</label>
+            <input type="radio" id="temperature-radio-50" name="temperature" value="50" header-title="50 °C">
+            <label for="temperature-radio-50">50°</label>
+            <input type="radio" id="temperature-radio-55" name="temperature" value="55" header-title="55 °C">
+            <label for="temperature-radio-55">55°</label>
+            <input type="radio" id="temperature-radio-60" name="temperature" value="60" header-title="60 °C">
+            <label for="temperature-radio-60">60°</label>
+            <input type="radio" id="temperature-radio-65" name="temperature" value="65" header-title="65 °C">
+            <label for="temperature-radio-65">65°</label>
+            <input type="radio" id="temperature-radio-70" name="temperature" value="70" header-title="70 °C">
+            <label for="temperature-radio-70">70°</label>
+            <input type="radio" id="temperature-radio-75" name="temperature" value="75" header-title="75 °C">
+            <label for="temperature-radio-75">75°</label>
+            <input type="radio" id="temperature-radio-80" name="temperature" value="80" header-title="80 °C">
+            <label for="temperature-radio-80">80°</label>
+            <input type="radio" id="temperature-radio-85" name="temperature" value="85" header-title="85 °C">
+            <label for="temperature-radio-85">85°</label>
+            <input type="radio" id="temperature-radio-90" name="temperature" value="90" header-title="90 °C">
+            <label for="temperature-radio-90">90°</label>
+            <input type="radio" id="temperature-radio-95" name="temperature" value="95" header-title="95 °C">
+            <label for="temperature-radio-95">95°</label>
+            <input type="radio" id="temperature-radio-98" name="temperature" value="98" header-title="98 °C">
+            <label for="temperature-radio-98">98°</label>
+            <input type="radio" id="temperature-radio-100" name="temperature" value="100" header-title="100 °C">
+            <label for="temperature-radio-100">100°</label>
+            <input type="radio" id="temperature-radio-105" name="temperature" value="105" header-title="105 °C">
+            <label for="temperature-radio-105">105°</label>
+            <input type="radio" id="temperature-radio-110" name="temperature" value="110" header-title="110 °C">
+            <label for="temperature-radio-110">110°</label>
+            <input type="radio" id="temperature-radio-115" name="temperature" value="115" header-title="115 °C">
+            <label for="temperature-radio-115">115°</label>
+            <input type="radio" id="temperature-radio-120" name="temperature" value="120" header-title="120 °C">
+            <label for="temperature-radio-120">120°</label>
+            <input type="radio" id="temperature-radio-140" name="temperature" value="140" header-title="140 °C">
+            <label for="temperature-radio-140">140°</label>
+            <input type="radio" id="temperature-radio-145" name="temperature" value="145" header-title="145 °C">
+            <label for="temperature-radio-145">145°</label>
+            <input type="radio" id="temperature-radio-150" name="temperature" value="150" header-title="150 °C">
+            <label for="temperature-radio-150">150°</label>
+            <input type="radio" id="temperature-radio-155" name="temperature" value="155" header-title="155 °C">
+            <label for="temperature-radio-155">155°</label>
+            <input type="radio" id="temperature-radio-160" name="temperature" value="160" header-title="160 °C">
+            <label for="temperature-radio-160">160°</label>
+          <input type="radio" id="temperature-radio-Varoma" name="temperature" value="varoma" header-title="varoma">
+          <label for="temperature-radio-Varoma">Varoma</label>
+        </div>
+      </div>
+    </core-expand>
+  </cr-select-input>
+</cr-tts-temperature>
+                  <cr-tts-speed
+  hidden
+  speed-translation="Stufe"
+  adjust-speed-message="Die Geschwindigkeit wurde auf die nächste zulässige Kombination korrigiert."
+  adjust-speed-with-temperature-message="Der Turbo wurde ausgeschaltet, da das Erhitzen nur bis Stufe 6 möglich ist.">
+  <cr-select-input>
+    <core-expand class="cr-select-input__expand" animation-time="0.4">
+      <button class="core-expand__header" aria-expanded="false" aria-controls="setting-panel">
+        <p class="icon" aria-hidden="true"></p>
+        <p class="core-expand__title" placeholder="Geschwindigkeit wählen"></p>
+      </button>
+      <div class="core-expand__content">
+        <div class="cr-select-input__radio-group cr-select-input__speed-group" radio-group="speed-group">
+          <input type="radio" id="speed-radio-soft" name="speed" value="soft" header-title="Stufe &lt;span class=&apos;icon icon--stirring&apos; aria-hidden=&apos;true&apos;&gt;&lt;/span&gt;">
+          <label for="speed-radio-soft"><span class="icon icon--stirring" aria-hidden="true"></span></label>
+          <input type="radio" id="speed-radio-0.5" name="speed" value="0.5" header-title="Stufe 0.5">
+          <label for="speed-radio-0.5">0.5</label>
+          <input type="radio" id="speed-radio-1" name="speed" value="1" header-title="Stufe 1.0">
+          <label for="speed-radio-1">1</label>
+          <input type="radio" id="speed-radio-1.5" name="speed" value="1.5" header-title="Stufe 1.5">
+          <label for="speed-radio-1.5">1.5</label>
+          <input type="radio" id="speed-radio-2" name="speed" value="2" header-title="Stufe 2.0">
+          <label for="speed-radio-2">2</label>
+          <input type="radio" id="speed-radio-2.5" name="speed" value="2.5" header-title="Stufe 2.5">
+          <label for="speed-radio-2.5">2.5</label>
+          <input type="radio" id="speed-radio-3" name="speed" value="3" header-title="Stufe 3.0">
+          <label for="speed-radio-3">3</label>
+          <input type="radio" id="speed-radio-3.5" name="speed" value="3.5" header-title="Stufe 3.5">
+          <label for="speed-radio-3.5">3.5</label>
+          <input type="radio" id="speed-radio-4" name="speed" value="4" header-title="Stufe 4.0">
+          <label for="speed-radio-4">4</label>
+          <input type="radio" id="speed-radio-4.5" name="speed" value="4.5" header-title="Stufe 4.5">
+          <label for="speed-radio-4.5">4.5</label>
+          <input type="radio" id="speed-radio-5" name="speed" value="5" header-title="Stufe 5.0">
+          <label for="speed-radio-5">5</label>
+          <input type="radio" id="speed-radio-5.5" name="speed" value="5.5" header-title="Stufe 5.5">
+          <label for="speed-radio-5.5">5.5</label>
+          <input type="radio" id="speed-radio-6" name="speed" value="6" header-title="Stufe 6.0">
+          <label for="speed-radio-6">6</label>
+          <input type="radio" id="speed-radio-6.5" name="speed" value="6.5" header-title="Stufe 6.5">
+          <label for="speed-radio-6.5">6.5</label>
+          <input type="radio" id="speed-radio-7" name="speed" value="7" header-title="Stufe 7.0">
+          <label for="speed-radio-7">7</label>
+          <input type="radio" id="speed-radio-7.5" name="speed" value="7.5" header-title="Stufe 7.5">
+          <label for="speed-radio-7.5">7.5</label>
+          <input type="radio" id="speed-radio-8" name="speed" value="8" header-title="Stufe 8.0">
+          <label for="speed-radio-8">8</label>
+          <input type="radio" id="speed-radio-8.5" name="speed" value="8.5" header-title="Stufe 8.5">
+          <label for="speed-radio-8.5">8.5</label>
+          <input type="radio" id="speed-radio-9" name="speed" value="9" header-title="Stufe 9.0">
+          <label for="speed-radio-9">9</label>
+          <input type="radio" id="speed-radio-9.5" name="speed" value="9.5" header-title="Stufe 9.5">
+          <label for="speed-radio-9.5">9.5</label>
+          <input type="radio" id="speed-radio-10" name="speed" value="10" header-title="Stufe 10">
+          <label for="speed-radio-10">10</label>
+        </div>
+        <hr class="separator--silver-20">
+        <div class="cr-select-input__radio-group cr-select-input__radio-group--icons cr-select-input__direction-group" radio-group="direction-group">
+          <input type="radio" id="direction-radio-CCW" name="direction" value="CCW" header-icon="reverse" prevent-collapse>
+          <label for="direction-radio-CCW">
+            <span class='icon icon--reverse' aria-hidden='true'></span>Linkslauf
+          </label>
+          <input type="radio" id="direction-radio-CW" name="direction" value="CW" header-icon="speed" prevent-collapse>
+          <label for="direction-radio-CW">
+            <span class='icon icon--speed' aria-hidden='true'></span>Normal
+          </label>
+        </div>
+      </div>
+    </core-expand>
+  </cr-select-input>
+</cr-tts-speed>
+                  <cr-tts-steaming-accessory hidden>
+  <cr-select-input>
+    <core-expand class="cr-select-input__expand" animation-time="0.4">
+      <button class="core-expand__header" aria-expanded="false" aria-controls="setting-panel">
+        <p class="core-expand__title"></p>
+      </button>
+      <div class="core-expand__content">
+        <div class="cr-select-input__radio-group cr-select-input__radio-group--list">
+          <input type="radio" id="steaming-accessory-radio-0" name="accessory" value="Varoma" header-title="im Varoma" checked>
+          <label for="steaming-accessory-radio-0">im Varoma</label>
+          <input type="radio" id="steaming-accessory-radio-1" name="accessory" value="SimmeringBasket" header-title="im Gareinsatz">
+          <label for="steaming-accessory-radio-1">im Gareinsatz</label>
+          <input type="radio" id="steaming-accessory-radio-2" name="accessory" value="VaromaAndSimmeringBasket" header-title="in beidem">
+          <label for="steaming-accessory-radio-2">in beidem</label>
+        </div>
+      </div>
+    </core-expand>
+  </cr-select-input>
+</cr-tts-steaming-accessory>
+                  <cr-tts-browning-power hidden>
+  <core-radio-group>
+    <core-chip-toggle action="check" role="radio">
+      <span class="core-chip-toggle__text core-chip-toggle__text">Leicht</span>
+      <input type="radio" name="browning-power" value="Gentle">
+    </core-chip-toggle>
+    <core-chip-toggle action="check" role="radio">
+      <span class="core-chip-toggle__text core-chip-toggle__text">Intensiv</span>
+      <input type="radio" name="browning-power" value="Intense">
+    </core-chip-toggle>
+  </core-radio-group>
+</cr-tts-browning-power>
+                  
+<cr-tts-pulse-count hidden>
+  <cr-select-input>
+    <core-expand class="cr-select-input__expand" animation-time="0.4">
+      <button class="core-expand__header" aria-expanded="false" aria-controls="setting-panel">
+        <p class="core-expand__title"></p>
+      </button>
+      <div class="core-expand__content">
+        <div class="cr-select-input__radio-group">
+            <input type="radio" id="pulse-count-1" name="pulse-count" value="1" header-title="1 x">
+  <label for="pulse-count-1">1 x</label>
+            <input type="radio" id="pulse-count-2" name="pulse-count" value="2" header-title="2 x">
+  <label for="pulse-count-2">2 x</label>
+            <input type="radio" id="pulse-count-3" name="pulse-count" value="3" header-title="3 x">
+  <label for="pulse-count-3">3 x</label>
+            <input type="radio" id="pulse-count-4" name="pulse-count" value="4" header-title="4 x">
+  <label for="pulse-count-4">4 x</label>
+            <input type="radio" id="pulse-count-5" name="pulse-count" value="5" header-title="5 x">
+  <label for="pulse-count-5">5 x</label>
+            <input type="radio" id="pulse-count-6" name="pulse-count" value="6" header-title="6 x">
+  <label for="pulse-count-6">6 x</label>
+            <input type="radio" id="pulse-count-7" name="pulse-count" value="7" header-title="7 x">
+  <label for="pulse-count-7">7 x</label>
+            <input type="radio" id="pulse-count-8" name="pulse-count" value="8" header-title="8 x">
+  <label for="pulse-count-8">8 x</label>
+            <input type="radio" id="pulse-count-9" name="pulse-count" value="9" header-title="9 x">
+  <label for="pulse-count-9">9 x</label>
+        </div>
+      </div>
+    </core-expand>
+  </cr-select-input>
+</cr-tts-pulse-count>
+                </core-accordion>
+              </div>
+            </core-scrollbar>
+          </div>
+        </core-content-navigation>
+      </div>
+      <div class="cr-popover-modal__footer">
+        <button class="cr-popover-modal__basket button--secondary">Löschen</button>
+      </div>
+    </div>
+  </cr-popover-modal>
+  <core-modal id="delete-tts-modal" class="core-modal--small" hidden>
+    <div class="core-modal__wrapper">
+      <div class="core-modal__container">
+        <button class="core-modal__close" aria-label="Close Modal"></button>
+        <div class="core-modal__header">
+          <h2>Koch-Einstellungen entfernen</h2>
+        </div>
+        <div class="core-modal__content">Möchtest du diese Koch-Einstellung wirklich entfernen?</div>
+        <div class="core-modal__footer">
+          <button action="cancel" class="button--secondary">Abbrechen</button>
+          <button action="confirm" class="button--primary">Löschen</button>
+        </div>
+      </div>
+    </div>
+  </core-modal>
+</cr-tts-modal>

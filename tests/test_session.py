@@ -6,6 +6,7 @@ import asyncio
 import stat
 from pathlib import Path
 from typing import Any, Protocol, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from cookidoo_api import Cookidoo, CookidooLocalizationConfig
@@ -42,6 +43,7 @@ from cookidough_mcp.annotation_models import (
 from cookidough_mcp.china_client import CHINA_LOCALIZATION, ChinaClient
 from cookidough_mcp.config import Settings
 from cookidough_mcp.errors import AuthenticationError, NotFoundError, UpstreamApiError
+from cookidough_mcp.mode_catalog import BUILTIN_CATALOG
 from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
 from cookidough_mcp.session import (
     CookidoughSession,
@@ -418,6 +420,7 @@ async def test_patch_custom_recipe_maps_the_body_for_china(
 
     monkeypatch.setattr(session, "_authed_http", _fake_authed_http)
     monkeypatch.setattr(session, "_custom_recipes_url", _custom_recipes_url)
+    monkeypatch.setattr(session, "get_mode_catalog", AsyncMock(return_value=BUILTIN_CATALOG))
 
     await session._patch_custom_recipe(
         "cr1",
