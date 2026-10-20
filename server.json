@@ -1,0 +1,65 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Poket-Jony/cookidough-mcp",
+  "title": "Cookidough (unofficial Thermomix Cookidoo)",
+  "description": "Search, plan, shop and upload guided-cooking recipes on the Thermomix Cookidoo platform",
+  "repository": {
+    "url": "https://github.com/Poket-Jony/cookidough-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "cookidough-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "COOKIDOUGH_EMAIL",
+          "description": "Account email (phone number for the mainland-China platform)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "COOKIDOUGH_PASSWORD",
+          "description": "Account password",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "COOKIDOUGH_COUNTRY",
+          "description": "ISO 3166-1 alpha-2 country code (default: de)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "COOKIDOUGH_LANGUAGE",
+          "description": "ISO 639-1 or BCP-47 language (default: de)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "COOKIDOUGH_QUALITY_BAR",
+          "description": "Minimum recipe quality score for uploads (default: 70)",
+          "isRequired": false,
+          "format": "number",
+          "isSecret": false
+        },
+        {
+          "name": "COOKIDOUGH_TOKEN_FILE",
+          "description": "Optional path to persist the OAuth2 tokens across restarts",
+          "isRequired": false,
+          "format": "filepath",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

@@ -10,6 +10,8 @@ Thermomix® [Cookidoo®](https://cookidoo.de) platform. Plug it into Claude Desk
 Claude Code or any other MCP-aware client and let your LLM search
 recipes, manage shopping lists and meal plans, and upload custom recipes.
 
+<!-- mcp-name: io.github.Poket-Jony/cookidough-mcp -->
+
 > **Unofficial project.** This is an independent, community-built MCP server.
 > It is **not** developed, sponsored, endorsed, or affiliated with Vorwerk,
 > Thermomix®, or Cookidoo®. The name "Thermomix" and "Cookidoo" is used here
@@ -219,6 +221,24 @@ locally with `--from`):**
         "COOKIDOUGH_COUNTRY": "de",
         "COOKIDOUGH_LANGUAGE": "de-DE",
         "COOKIDOUGH_QUALITY_BAR": "70"
+      }
+    }
+  }
+}
+```
+
+**Option C — from PyPI** (once a release is published; no clone, no local
+path):
+
+```json
+{
+  "mcpServers": {
+    "cookidough": {
+      "command": "uvx",
+      "args": ["cookidough-mcp"],
+      "env": {
+        "COOKIDOUGH_EMAIL": "you@example.com",
+        "COOKIDOUGH_PASSWORD": "..."
       }
     }
   }
@@ -651,6 +671,20 @@ error block the build.
 
 Project conventions (architecture, invariants, security model) are
 documented in [`AGENTS.md`](AGENTS.md) — read it before contributing.
+
+### Releasing
+
+1. Set the new version in `pyproject.toml` and twice in `server.json`
+   (`version` and `packages[0].version`).
+2. Commit, then push a matching tag: `git tag v0.1.0 && git push origin v0.1.0`.
+
+The `Publish` workflow (`.github/workflows/publish.yml`) checks that the
+versions match, runs `./check.sh`, publishes the package to PyPI via
+trusted publishing and the server to the official
+[MCP Registry](https://registry.modelcontextprotocol.io) via GitHub OIDC —
+no tokens or secrets involved. One-time setup on PyPI: add a pending
+trusted publisher for project `cookidough-mcp`, repository
+`Poket-Jony/cookidough-mcp`, workflow `publish.yml`, environment `pypi`.
 
 ## Architecture
 
