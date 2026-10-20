@@ -306,7 +306,7 @@ async def test_custom_recipe_public_url_logs_in_on_first_use(
     monkeypatch.setattr(session, "_ensure_logged_in", _login)
 
     url = await session._custom_recipe_public_url("r123")
-    assert url == "https://cookidoo.de/recipes/custom-recipes/r123"
+    assert url == "https://cookidoo.de/created-recipes/de-DE/r123"
 
 
 async def test_get_subscription_returns_none(
@@ -513,7 +513,7 @@ async def test_update_custom_recipe_patches_and_returns_public_url(
     monkeypatch.setattr(
         session,
         "_custom_recipe_public_url",
-        AsyncMock(return_value="https://cookidoo.de/recipes/custom-recipes/cr1"),
+        AsyncMock(return_value="https://cookidoo.de/created-recipes/de-DE/cr1"),
     )
 
     draft = CustomRecipeDraft(
@@ -668,7 +668,7 @@ async def test_clone_recipe_as_custom_maps_response(
         return_value=_NS(
             id="new",
             name="Cloned",
-            url="https://cookidoo.de/recipes/custom-recipes/new",
+            url="https://cookidoo.de/created-recipes/de-DE/new",
             serving_size=4,
             active_time=600,
             total_time=1800,
@@ -1703,7 +1703,7 @@ async def test_set_custom_recipe_image_signs_uploads_and_patches(
             return_value=CustomRecipeDetails(
                 id="cr1",
                 name="Smoothie",
-                url="https://cookidoo.de/recipes/custom-recipes/cr1",
+                url="https://cookidoo.de/created-recipes/de-DE/cr1",
                 image="https://ugc.assets.tmecosys.com/image/upload/t_x/abc123.jpg",
                 thumbnail="https://ugc.assets.tmecosys.com/image/upload/t_y/abc123.jpg",
             )

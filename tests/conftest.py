@@ -124,7 +124,7 @@ class FakeSession:
         return CustomRecipeDetails(
             id=recipe_id,
             name="Custom",
-            url=f"https://cookidoo.de/recipes/custom-recipes/{recipe_id}",
+            url=f"https://cookidoo.de/created-recipes/de-DE/{recipe_id}",
             serving_size=4,
             active_time_seconds=600,
             total_time_seconds=1800,
@@ -233,11 +233,11 @@ class FakeSession:
 
     async def upload_custom_recipe(self, draft: Any) -> tuple[str, str]:
         self.calls.upload_drafts.append(draft)
-        return "new-id", "https://cookidoo.de/recipes/custom-recipes/new-id"
+        return "new-id", "https://cookidoo.de/created-recipes/de-DE/new-id"
 
     async def update_custom_recipe(self, recipe_id: str, draft: Any) -> tuple[str, str]:
         self.calls.update_drafts.append((recipe_id, draft))
-        return recipe_id, f"https://cookidoo.de/recipes/custom-recipes/{recipe_id}"
+        return recipe_id, f"https://cookidoo.de/created-recipes/de-DE/{recipe_id}"
 
     async def set_custom_recipe_image(
         self, recipe_id: str, image_source: str
@@ -247,7 +247,7 @@ class FakeSession:
             recipe_id=recipe_id,
             image="https://ugc.assets.tmecosys.com/image/upload/t_x/prod/img/customer-recipe/a.jpg",
             thumbnail="https://ugc.assets.tmecosys.com/image/upload/t_y/prod/img/customer-recipe/a.jpg",
-            url=f"https://cookidoo.de/recipes/custom-recipes/{recipe_id}",
+            url=f"https://cookidoo.de/created-recipes/de-DE/{recipe_id}",
         )
 
     async def delete_custom_recipe(self, recipe_id: str) -> None:
@@ -260,7 +260,7 @@ class FakeSession:
         return CustomRecipeDetails(
             id=f"clone-of-{recipe_id}",
             name="Cloned",
-            url=f"https://cookidoo.de/recipes/custom-recipes/clone-of-{recipe_id}",
+            url=f"https://cookidoo.de/created-recipes/de-DE/clone-of-{recipe_id}",
             serving_size=serving_size,
         )
 

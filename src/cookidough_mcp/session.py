@@ -1433,9 +1433,9 @@ class CookidoughSession:
         return f"{_localization_origin(localization.url)}/created-recipes/{localization.language}"
 
     async def _custom_recipe_public_url(self, recipe_id: str) -> str:
-        client = await self._ensure_logged_in()
-        localization = client.localization
-        return f"{_localization_origin(localization.url)}/recipes/custom-recipes/{recipe_id}"
+        # The recipe page shares its path with the API resource (browsers get
+        # HTML); "/recipes/custom-recipes/{id}" answers 404.
+        return f"{await self._custom_recipes_url()}/{recipe_id}"
 
     def _bearer_header(self) -> dict[str, str]:
         client = self._client
