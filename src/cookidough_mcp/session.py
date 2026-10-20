@@ -2121,7 +2121,9 @@ def _redact_error_body(body: str) -> str:
 def _draft_to_payload(
     draft: CustomRecipeDraft, inferrer: AnnotationInferrer | None = None
 ) -> dict[str, Any]:
-    annotation_inferrer = inferrer if inferrer is not None else AnnotationInferrer()
+    annotation_inferrer = (
+        inferrer if inferrer is not None else AnnotationInferrer.for_tools(draft.tools)
+    )
     # No image keys: the PATCH endpoint leaves omitted fields untouched
     # (verified live), so an update never wipes a previously uploaded photo.
     # Sending "image": null would reset it to the placeholder.

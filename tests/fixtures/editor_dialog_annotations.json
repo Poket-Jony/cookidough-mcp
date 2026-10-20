@@ -1,0 +1,176 @@
+{
+  "_comment": "Annotations the recipe editor settings dialog (cr-tts-modal, pl-customer-recipes 1.174.12) produced on 2026-10-20 for a TM6 and a TM7 recipe, all accepted by PATCH /created-recipes. Offsets are UTF-16 code units, which equal code points for these texts. Recorded with tobilektri/mcp-cookidoo.",
+  "cases": [
+    {
+      "tools": [
+        "TM6"
+      ],
+      "text": "Teig Teig kneten \ue001/2 Min. fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "time": 120
+        },
+        "offset": 5,
+        "length": 20,
+        "name": "dough"
+      }
+    },
+    {
+      "tools": [
+        "TM6"
+      ],
+      "text": "Zerkleinern Turbo \ue00b/1 Sek. fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "time": 1
+        },
+        "offset": 12,
+        "length": 14,
+        "name": "turbo"
+      }
+    },
+    {
+      "tools": [
+        "TM6"
+      ],
+      "text": "Fein P\u00fcrieren \ue01e/1 Min. fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "speed": "8",
+          "time": 60
+        },
+        "offset": 5,
+        "length": 17,
+        "name": "blend"
+      }
+    },
+    {
+      "tools": [
+        "TM6"
+      ],
+      "text": "Suppe Erw\u00e4rmen \ue019/65\u00b0C fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "speed": "1",
+          "temperature": {
+            "value": "65",
+            "unit": "C"
+          }
+        },
+        "offset": 6,
+        "length": 15,
+        "name": "warm_up"
+      }
+    },
+    {
+      "tools": [
+        "TM6"
+      ],
+      "text": "Reis Reis kochen \ue00d fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {},
+        "offset": 5,
+        "length": 13,
+        "name": "rice_cooker"
+      }
+    },
+    {
+      "tools": [
+        "TM6"
+      ],
+      "text": "Gem\u00fcse 20 Min./Varoma/\ue003/Stufe 1 fertig.",
+      "annotation": {
+        "type": "TTS",
+        "data": {
+          "speed": "1",
+          "direction": "CCW",
+          "time": 1200,
+          "temperature": {
+            "value": "varoma",
+            "unit": "C"
+          }
+        },
+        "offset": 7,
+        "length": 24
+      }
+    },
+    {
+      "tools": [
+        "TM7"
+      ],
+      "text": "Gem\u00fcse Dampfgaren \ue008/20 Min. fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "speed": "1",
+          "direction": "CCW",
+          "time": 1200,
+          "accessory": "SimmeringBasket"
+        },
+        "offset": 7,
+        "length": 20,
+        "name": "steaming"
+      }
+    },
+    {
+      "tools": [
+        "TM7"
+      ],
+      "text": "Zwiebeln Anbraten \ue026 fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "temperature": {
+            "value": "160",
+            "unit": "C"
+          },
+          "time": 600,
+          "power": "Intense"
+        },
+        "offset": 9,
+        "length": 10,
+        "name": "browning"
+      }
+    },
+    {
+      "tools": [
+        "TM7"
+      ],
+      "text": "N\u00fcsse Turbo \ue00b/1 Sek. fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "time": 1,
+          "pulseCount": 3
+        },
+        "offset": 6,
+        "length": 14,
+        "name": "turbo"
+      }
+    },
+    {
+      "tools": [
+        "TM7"
+      ],
+      "text": "Suppe Erw\u00e4rmen \ue019/70\u00b0C fertig.",
+      "annotation": {
+        "type": "MODE",
+        "data": {
+          "speed": "soft",
+          "temperature": {
+            "value": "70",
+            "unit": "C"
+          }
+        },
+        "offset": 6,
+        "length": 15,
+        "name": "warm_up"
+      }
+    }
+  ]
+}

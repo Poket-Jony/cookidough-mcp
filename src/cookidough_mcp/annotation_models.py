@@ -158,11 +158,12 @@ class TurboModeData(_AnnotationDataModel):
     """Payload of a ``MODE/turbo`` annotation.
 
     ``time`` is a float because the platform emits sub-second pulse durations
-    (e.g. ``0.5``); ``pulseCount`` is the number of repeated bursts.
+    (e.g. ``0.5``); ``pulseCount`` is the number of repeated bursts. Only the
+    TM7 editor sets ``pulseCount``; the TM6 editor sends ``time`` alone.
     """
 
     time: float = Field(gt=0)
-    pulseCount: int = Field(ge=1)  # noqa: N815 — matches the upstream wire field
+    pulseCount: int | None = Field(default=None, ge=1)  # noqa: N815 — upstream wire field
 
 
 class RiceCookerModeData(_AnnotationDataModel):

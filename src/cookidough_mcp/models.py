@@ -18,6 +18,7 @@ from pydantic import (
 
 from .annotation_models import StepAnnotation
 from .constants import DEFAULT_DEVICE_MODELS, DeviceModel
+from .editor_rules import annotation_problem, editor_variant
 
 
 class ShoppingItemSource(StrEnum):
@@ -318,11 +319,12 @@ class CustomRecipeDraft(_Model):
             "This field is NOT a list of accessories used inside the bowl "
             "(Mixtopf, Spatel, Messbecher, Varoma, Schmetterling, ...); "
             "those belong in the step text and are rejected here. "
-            "Pick the lowest TM generation that can actually run every "
-            "step: TM5 has no Sanftrührstufe (speed='soft') and no "
-            "browning/steaming/dough/warm_up/blend/turbo/rice_cooker MODE; "
-            "rice_cooker is TM7-only. When in doubt list multiple "
-            "(e.g. ['TM7', 'TM6'])."
+            "The list decides the platform editor the recipe is built for: "
+            "with 'TM7' in it the TM7 editor, otherwise the TM6 editor. "
+            "Only the TM7 editor offers the browning and steaming MODEs; "
+            "only the TM6 editor offers Varoma as a TTS temperature "
+            "(with 'TM7', write Varoma steps as steaming). dough, turbo, "
+            "blend, warm_up and rice_cooker exist in both."
         ),
     )
     hints: list[str] = Field(default_factory=list)
@@ -341,6 +343,17 @@ class CustomRecipeDraft(_Model):
                 "total_minutes must be greater than or equal to prep_minutes "
                 f"(got total={self.total_minutes}, prep={self.prep_minutes})."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _annotations_fit_editor(self) -> Self:
+        variant = editor_variant(self.tools)
+        for index, step in enumerate(self.steps):
+            for annotation in step.annotations:
+                problem = annotation_problem(annotation, variant)
+                if problem is not None:
+                    span = step.text[annotation.offset : annotation.offset + annotation.length]
+                    raise ValueError(f"Step {index}, annotation on {span!r}: {problem}.")
         return self
 
     @property
