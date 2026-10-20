@@ -2151,7 +2151,9 @@ def _step_to_payload(
     annotations = _step_annotations(step, ingredients, inferrer)
     payload: dict[str, Any] = {"type": "STEP", "text": step.text}
     if annotations:
-        payload["annotations"] = [_annotation_to_payload(annotation) for annotation in annotations]
+        payload["annotations"] = [
+            _annotation_to_payload(annotation, step.text) for annotation in annotations
+        ]
     return payload
 
 
@@ -2176,16 +2178,26 @@ def _step_annotations(
     return sorted([*explicit, *links], key=lambda a: a.offset)
 
 
-def _annotation_to_payload(annotation: StepAnnotation) -> dict[str, Any]:
+def _annotation_to_payload(annotation: StepAnnotation, text: str) -> dict[str, Any]:
+    # The platform counts positions in UTF-16 code units (JavaScript strings);
+    # the DTO counts code points. They differ for characters outside the BMP.
+    end = annotation.offset + annotation.length
     payload: dict[str, Any] = {
         "type": annotation.type,
         "data": annotation.data.model_dump(),
-        "position": {"offset": annotation.offset, "length": annotation.length},
+        "position": {
+            "offset": _utf16_length(text[: annotation.offset]),
+            "length": _utf16_length(text[annotation.offset : end]),
+        },
     }
     mode_name = getattr(annotation, "name", None)
     if mode_name is not None:
         payload["name"] = mode_name
     return payload
+
+
+def _utf16_length(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
 
 
 __all__ = ["CookidoughSession", "CookidoughSessionProtocol"]

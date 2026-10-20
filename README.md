@@ -481,9 +481,10 @@ three.
 - **`blend`** — Blending: `{ "speed": "<n>", "time": <s> }`
 
 Each annotation pins its span via `offset` and `length`, counted in
-Python `str` units over the step `text` (Unicode code points; this
-matches what the platform accepted in our PATCH captures, including
-umlauts). A span must not start or end inside a word; the validation
+Python `str` units over the step `text` (Unicode code points). The
+platform itself counts UTF-16 code units, like JavaScript; the server
+converts on upload, so characters outside the BMP (e.g. emoji) need no
+special handling. A span must not start or end inside a word; the validation
 error for such a span names the nearest span of the same length that
 fits. Two ways to populate them:
 

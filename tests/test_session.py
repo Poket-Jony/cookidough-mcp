@@ -1500,3 +1500,18 @@ def test_draft_to_payload_omits_annotations_when_none_inferred() -> None:
     instruction = _draft_to_payload(draft)["instructions"][0]
 
     assert "annotations" not in instruction
+
+
+def test_draft_to_payload_counts_positions_in_utf16_code_units() -> None:
+    # The emoji is one code point but two UTF-16 code units; the platform's
+    # editor highlights "4 Sek./Stufe 5" only with the UTF-16 offset 7.
+    draft = CustomRecipeDraft(
+        name="X",
+        ingredients=["1 Zwiebel"],
+        steps=[RecipeStep(text="Los 🍛 4 Sek./Stufe 5 fertig.")],
+    )
+
+    annotation = _draft_to_payload(draft)["instructions"][0]["annotations"][0]
+
+    assert annotation["type"] == "TTS"
+    assert annotation["position"] == {"offset": 7, "length": 14}
