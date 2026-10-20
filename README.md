@@ -436,22 +436,28 @@ Pydantic rejects unquoted numbers at the boundary.
 ### `tools` — device compatibility, not accessories
 
 `CustomRecipeDraft.tools` lists which device **generations**
-the recipe is compatible with. Only three tokens are accepted:
+the recipe is compatible with. Only three tokens are accepted: `"TM5"`,
+`"TM6"` and `"TM7"`. Default: all three.
 
-| Value   | Meaning                                                                                             |
-|---------|-----------------------------------------------------------------------------------------------------|
-| `"TM5"` | Pre-2019 device, no Sanftrührstufe, no browning/steaming/dough/warm_up/blend/turbo/rice_cooker MODE |
-| `"TM6"` | Adds Sanftrührstufe (`speed="soft"`) and the browning, steaming, dough, warm_up, blend, turbo MODEs |
-| `"TM7"` | Adds the rice_cooker MODE                                                                           |
+The list also decides which variant of the platform's recipe editor the
+recipe is built for, and with it which annotations are valid. As soon as
+`"TM7"` is in the list, the platform treats the recipe as a TM7 recipe;
+any list without it (`["TM6"]`, `["TM5"]`, `["TM6", "TM5"]`) is treated
+like a TM6 recipe:
+
+| Annotation                                          | TM6 editor (no `"TM7"`) | TM7 editor (`"TM7"` listed) |
+|-----------------------------------------------------|-------------------------|-----------------------------|
+| `dough`, `turbo`, `blend`, `warm_up`, `rice_cooker` | yes                     | yes                         |
+| `browning`, `steaming`                              | no                      | yes                         |
+| Varoma as TTS temperature (`"value": "varoma"`)     | yes                     | no — use `steaming`         |
+
+Explicit annotations that do not fit the variant are rejected with a
+validation error; inferred annotations follow the variant automatically
+(see below).
 
 It is **not** a list of accessories or in-bowl tools — `"Mixtopf"`,
 `"Spatel"`, `"Varoma"`, `"Schmetterling"`, etc. are rejected by Pydantic
 with a `literal_error`. Reference those in the step text instead.
-
-Choose the **lowest** TM generation that can still run every step, and
-list it together with all higher generations (e.g. `["TM7", "TM6"]` for a
-recipe that uses `Sanftrührstufe` but no rice_cooker). Default: all
-three.
 
 ### Top-level annotation types
 
@@ -511,9 +517,11 @@ fits. Two ways to populate them:
    equivalent), the server scans the text on upload:
 
    - `<n> Min./<temp> °C/(Leicht|Intensiv|Gentle|Intense)` becomes a
-     `MODE/browning` span (temperatures outside the platform's whitelist
-     of 140-160 °C in 5 °C steps and durations above 30 min are dropped).
-   - `<time>/Varoma/Stufe <n>` becomes a `MODE/steaming` span.
+     `MODE/browning` span for TM7 recipes (temperatures outside the
+     platform's whitelist of 140-160 °C in 5 °C steps and durations above
+     30 min are dropped).
+   - `<time>/Varoma/Stufe <n>` becomes a `MODE/steaming` span for TM7
+     recipes and a `TTS` span with temperature `varoma` otherwise.
    - `<n> Min./Teigstufe` (and `Stufe Teig` / `dough mode` /
      `knead mode`) becomes a `MODE/dough` span.
    - `<time>[/<°C>][/Linkslauf]/Stufe <n>[/Linkslauf]` becomes a `TTS`

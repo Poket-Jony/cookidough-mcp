@@ -16,8 +16,9 @@ from pydantic import (
     model_validator,
 )
 
-from .annotation_models import StepAnnotation
+from .annotation_models import ModeName, StepAnnotation, TtsAnnotation
 from .constants import DEFAULT_DEVICE_MODELS, DeviceModel
+from .editor_rules import VAROMA_TEMPERATURE, editor_variant, mode_available, varoma_is_temperature
 
 
 class ShoppingItemSource(StrEnum):
@@ -318,11 +319,12 @@ class CustomRecipeDraft(_Model):
             "This field is NOT a list of accessories used inside the bowl "
             "(Mixtopf, Spatel, Messbecher, Varoma, Schmetterling, ...); "
             "those belong in the step text and are rejected here. "
-            "Pick the lowest TM generation that can actually run every "
-            "step: TM5 has no Sanftrührstufe (speed='soft') and no "
-            "browning/steaming/dough/warm_up/blend/turbo/rice_cooker MODE; "
-            "rice_cooker is TM7-only. When in doubt list multiple "
-            "(e.g. ['TM7', 'TM6'])."
+            "The list decides the platform editor the recipe is built for: "
+            "with 'TM7' in it the TM7 editor, otherwise the TM6 editor. "
+            "Only the TM7 editor offers the browning and steaming MODEs; "
+            "only the TM6 editor offers Varoma as a TTS temperature "
+            "(with 'TM7', write Varoma steps as steaming). dough, turbo, "
+            "blend, warm_up and rice_cooker exist in both."
         ),
     )
     hints: list[str] = Field(default_factory=list)
@@ -341,6 +343,29 @@ class CustomRecipeDraft(_Model):
                 "total_minutes must be greater than or equal to prep_minutes "
                 f"(got total={self.total_minutes}, prep={self.prep_minutes})."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _annotations_fit_editor_variant(self) -> Self:
+        variant = editor_variant(self.tools)
+        for index, step in enumerate(self.steps):
+            for annotation in step.annotations:
+                if isinstance(annotation, TtsAnnotation):
+                    temperature = annotation.data.temperature
+                    varoma = temperature is not None and temperature.value == VAROMA_TEMPERATURE
+                    if varoma and not varoma_is_temperature(variant):
+                        raise ValueError(
+                            f"Step {index}: Varoma is not a TTS temperature in the "
+                            "TM7 editor (tools contain 'TM7'); use a MODE/steaming "
+                            "annotation instead."
+                        )
+                    continue
+                mode = getattr(annotation, "name", None)
+                if isinstance(mode, ModeName) and not mode_available(mode, variant):
+                    raise ValueError(
+                        f"Step {index}: the {mode} MODE exists in the TM7 editor only; "
+                        "add 'TM7' to tools or use a TTS annotation instead."
+                    )
         return self
 
     @property
