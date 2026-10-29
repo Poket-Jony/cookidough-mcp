@@ -16,7 +16,7 @@ recipes, manage shopping lists and meal plans, and upload custom recipes.
 > purely to identify the third-party service this software talks to. See
 > [Disclaimer & trademarks](#disclaimer--trademarks) for details.
 
-- 42 MCP tools across 7 domains (auth, recipes, collections, shopping,
+- 43 MCP tools across 7 domains (auth, recipes, collections, shopping,
   calendar, discovery, interactions), plus 3 MCP resources and 2 prompts
 - Dual transport: stdio (default) and streamable HTTP
 - Recipe quality gate that blocks low-quality custom recipe uploads
@@ -103,6 +103,8 @@ below.
 
 - Browse and subscribe to / unsubscribe from platform-curated managed
   collections.
+- Read any collection's content — its chapters and their recipes (ID +
+  title) — whether managed or custom.
 - Full CRUD over custom collections: create, list, delete, add recipes,
   remove a single recipe.
 
@@ -332,6 +334,7 @@ credentials are never sent there.
 | `add_managed_collection`               | Subscribe to a managed collection by ID                                                              |
 | `remove_managed_collection`            | Unsubscribe from a managed collection                                                                |
 | `list_custom_collections`              | List your own custom collections (paged, same shape)                                                 |
+| `get_collection`                       | Content of one managed or custom collection: its chapters and their recipes (ID + title)             |
 | `create_custom_collection`             | Create a new empty custom collection                                                                 |
 | `delete_custom_collection`             | Delete a custom collection (recipes are kept)                                                        |
 | `add_recipes_to_custom_collection`     | Add one or more recipes to a custom collection                                                       |

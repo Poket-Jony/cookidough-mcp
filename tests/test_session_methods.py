@@ -405,6 +405,42 @@ async def test_collection_methods(patched_session: tuple[CookidoughSession, Any]
     await session.remove_recipe_from_custom_collection("c", "r1")
 
 
+async def test_get_collection_walks_every_page_of_both_kinds(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    managed = _NS(id="m1", name="Managed", description=None, chapters=[])
+    custom = _NS(
+        id="c2",
+        name="Later page",
+        description="d",
+        chapters=[_NS(name="", recipes=[_NS(id="r9", name="Pie", total_time=900)])],
+    )
+    fake.count_managed_collections = AsyncMock(return_value=(1, 1))
+    fake.get_managed_collections = AsyncMock(return_value=[managed])
+    fake.count_custom_collections = AsyncMock(return_value=(2, 2))
+
+    async def _get_custom(page: int = 0) -> list[Any]:
+        first = _NS(id="c1", name="First", description=None, chapters=[])
+        return [first] if page == 0 else [custom]
+
+    fake.get_custom_collections = _get_custom
+
+    found = await session.get_collection("c2")
+    assert (found.name, found.managed, found.recipe_count) == ("Later page", False, 1)
+    assert found.chapters[0].recipes[0].name == "Pie"
+    assert (await session.get_collection("m1")).managed is True
+
+
+async def test_get_collection_unknown_id_raises_not_found(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    _mock_collections(fake, managed=[_make_collection()], custom=[])
+    with pytest.raises(NotFoundError, match="missing"):
+        await session.get_collection("missing")
+
+
 async def test_shopping_list_methods(
     patched_session: tuple[CookidoughSession, Any],
 ) -> None:

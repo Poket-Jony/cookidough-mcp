@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..context import ToolContext, get_context
-from ..models import CollectionPage, CollectionSummary
+from ..models import CollectionDetails, CollectionPage, CollectionSummary
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -40,6 +40,15 @@ def register(mcp: MCPServer) -> None:
         so callers know whether to request further pages.
         """
         return await get_context(ctx).session.list_custom_collections(page=page)
+
+    @mcp.tool()
+    async def get_collection(ctx: ToolContext, collection_id: str) -> CollectionDetails:
+        """Get one collection, managed or custom, with its chapters and their recipes.
+
+        Each recipe carries its ID and title; ``managed`` tells which kind the
+        collection is. Fails if the ID matches none of the user's collections.
+        """
+        return await get_context(ctx).session.get_collection(collection_id)
 
     @mcp.tool()
     async def create_custom_collection(ctx: ToolContext, name: str) -> CollectionSummary:

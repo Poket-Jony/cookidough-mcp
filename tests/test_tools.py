@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 
 from cookidough_mcp.constants import MAX_RECIPE_DETAILS_PER_CALL
 from cookidough_mcp.context import AppContext
-from cookidough_mcp.errors import QualityGateError, UpstreamApiError
+from cookidough_mcp.errors import NotFoundError, QualityGateError, UpstreamApiError
 from cookidough_mcp.models import (
     AdditionalItemRename,
     CustomRecipeDraft,
@@ -84,6 +84,23 @@ async def test_list_managed_collections(registered_mcp: MCPServer, fake_mcp_cont
     page = await _tool_fn(registered_mcp, "list_managed_collections")(fake_mcp_context)
     assert page.items[0].id == "mc1"
     assert page.total_pages == 1
+
+
+async def test_get_collection_returns_chapters_and_recipes(
+    registered_mcp: MCPServer, fake_mcp_context: Any
+) -> None:
+    collection = await _tool_fn(registered_mcp, "get_collection")(
+        fake_mcp_context, collection_id="cc1"
+    )
+    assert collection.name == "My picks"
+    assert [r.name for r in collection.chapters[0].recipes] == ["Soup", "Stew"]
+
+
+async def test_get_collection_unknown_id_raises(
+    registered_mcp: MCPServer, fake_mcp_context: Any
+) -> None:
+    with pytest.raises(NotFoundError, match="nope"):
+        await _tool_fn(registered_mcp, "get_collection")(fake_mcp_context, collection_id="nope")
 
 
 async def test_add_recipes_to_shopping_list_returns_message(

@@ -46,6 +46,7 @@ from cookidough_mcp.models import CustomRecipeDraft, RecipeStep
 from cookidough_mcp.session import (
     CookidoughSession,
     _calendar_to_dto,
+    _collection_details_to_dto,
     _collection_to_dto,
     _custom_recipe_item_to_dto,
     _draft_to_payload,
@@ -789,6 +790,29 @@ def test_collection_to_dto_counts_recipes() -> None:
     dto = _collection_to_dto(collection)
     assert dto.chapter_count == 2
     assert dto.recipe_count == 3
+
+
+def test_collection_details_to_dto_maps_chapters_and_skips_idless_recipes() -> None:
+    collection = _NS(
+        id="c1",
+        name="N",
+        description=None,
+        chapters=[
+            _NS(name="ch1", recipes=[_NS(id="r1", name="Soup", total_time=600), _NS(id="")]),
+            _NS(name="ch2", recipes=[_NS(id="r2", name="Stew", total_time=None)]),
+        ],
+    )
+    dto = _collection_details_to_dto(collection, managed=True)
+    assert dto.managed is True
+    assert dto.chapter_count == 2
+    assert dto.recipe_count == 2
+    assert [c.name for c in dto.chapters] == ["ch1", "ch2"]
+    assert dto.chapters[0].recipes[0].model_dump() == {
+        "id": "r1",
+        "name": "Soup",
+        "total_time_seconds": 600,
+    }
+    assert [r.id for r in dto.chapters[1].recipes] == ["r2"]
 
 
 def test_calendar_to_dto_carries_custom_recipe_ids() -> None:

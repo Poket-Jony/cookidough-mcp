@@ -14,12 +14,16 @@ from pydantic import SecretStr
 
 from cookidough_mcp.config import Settings
 from cookidough_mcp.context import AppContext
+from cookidough_mcp.errors import NotFoundError
 from cookidough_mcp.models import (
     AdditionalItemRename,
     CalendarDay,
     CalendarRecipe,
     CalendarShoppingSummary,
+    CollectionChapter,
+    CollectionDetails,
     CollectionPage,
+    CollectionRecipe,
     CollectionSummary,
     CookedRecipe,
     CustomRecipeDetails,
@@ -150,6 +154,26 @@ class FakeSession:
             page=page,
             total_pages=1,
             total_elements=1,
+        )
+
+    async def get_collection(self, collection_id: str) -> CollectionDetails:
+        if collection_id != "cc1":
+            raise NotFoundError(f"Collection {collection_id!r} not found")
+        return CollectionDetails(
+            id="cc1",
+            name="My picks",
+            chapter_count=1,
+            recipe_count=2,
+            managed=False,
+            chapters=[
+                CollectionChapter(
+                    name="",
+                    recipes=[
+                        CollectionRecipe(id="r1", name="Soup"),
+                        CollectionRecipe(id="r2", name="Stew"),
+                    ],
+                )
+            ],
         )
 
     async def create_custom_collection(self, name: str) -> CollectionSummary:

@@ -201,6 +201,24 @@ class CollectionSummary(_Model):
     recipe_count: int = 0
 
 
+class CollectionRecipe(_Model):
+    id: str = Field(min_length=1)
+    name: str
+    total_time_seconds: int | None = None
+
+
+class CollectionChapter(_Model):
+    name: str
+    recipes: list[CollectionRecipe] = Field(default_factory=list)
+
+
+class CollectionDetails(CollectionSummary):
+    """One collection with its chapters and the recipes they hold."""
+
+    managed: bool
+    chapters: list[CollectionChapter] = Field(default_factory=list)
+
+
 class CollectionPage(_Model):
     """One page of collection listings plus pagination metadata."""
 

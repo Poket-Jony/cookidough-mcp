@@ -21,6 +21,7 @@ _EXPECTED_TOOL_NAMES = frozenset(
         "add_managed_collection",
         "remove_managed_collection",
         "list_custom_collections",
+        "get_collection",
         "create_custom_collection",
         "delete_custom_collection",
         "add_recipes_to_custom_collection",

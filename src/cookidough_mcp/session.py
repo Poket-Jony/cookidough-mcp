@@ -59,7 +59,10 @@ from .models import (
     CalendarDay,
     CalendarRecipe,
     CalendarShoppingSummary,
+    CollectionChapter,
+    CollectionDetails,
     CollectionPage,
+    CollectionRecipe,
     CollectionSummary,
     CookedRecipe,
     CustomRecipeDetails,
@@ -142,6 +145,7 @@ class CookidoughSessionProtocol(Protocol):
     async def add_managed_collection(self, collection_id: str) -> CollectionSummary: ...
     async def remove_managed_collection(self, collection_id: str) -> None: ...
     async def list_custom_collections(self, page: int = 0) -> CollectionPage: ...
+    async def get_collection(self, collection_id: str) -> CollectionDetails: ...
     async def create_custom_collection(self, name: str) -> CollectionSummary: ...
     async def delete_custom_collection(self, collection_id: str) -> None: ...
     async def add_recipes_to_custom_collection(
@@ -633,6 +637,17 @@ class CookidoughSession:
             total_elements=total_elements,
         )
 
+    async def get_collection(self, collection_id: str) -> CollectionDetails:
+        managed, custom = await self._drain_all_collections()
+        for is_managed, collections in ((True, managed), (False, custom)):
+            for collection in collections:
+                if getattr(collection, "id", None) == collection_id:
+                    return _collection_details_to_dto(collection, managed=is_managed)
+        raise NotFoundError(
+            f"Collection {collection_id!r} is neither one of your custom collections "
+            "nor a managed collection you subscribe to"
+        )
+
     async def create_custom_collection(self, name: str) -> CollectionSummary:
         collection = await self._run(lambda c: c.add_custom_collection(name))
         return _collection_to_dto(collection)
@@ -1019,10 +1034,7 @@ class CookidoughSession:
         Hard-coding ``page=0`` here would silently drop recipes that live on a
         second page for any reasonably-sized library.
         """
-        managed, custom = await asyncio.gather(
-            self._drain_managed_collections(),
-            self._drain_custom_collections(),
-        )
+        managed, custom = await self._drain_all_collections()
         collections: list[Any] = [*managed, *custom]
         if collection_ids is not None:
             wanted = set(collection_ids)
@@ -1036,6 +1048,12 @@ class CookidoughSession:
                     if isinstance(rid, str) and rid and rid not in seen:
                         seen[rid] = None
         return list(seen)
+
+    async def _drain_all_collections(self) -> tuple[list[Any], list[Any]]:
+        return await asyncio.gather(
+            self._drain_managed_collections(),
+            self._drain_custom_collections(),
+        )
 
     async def _drain_managed_collections(self) -> list[Any]:
         _, pages = await self._run(lambda c: c.count_managed_collections())
@@ -1706,6 +1724,33 @@ def _collection_to_dto(collection: Any) -> CollectionSummary:
         description=getattr(collection, "description", None),
         chapter_count=len(chapters),
         recipe_count=recipe_count,
+    )
+
+
+def _collection_details_to_dto(collection: Any, *, managed: bool) -> CollectionDetails:
+    chapters = [
+        CollectionChapter(
+            name=getattr(chapter, "name", None) or "",
+            recipes=[
+                CollectionRecipe(
+                    id=recipe.id,
+                    name=getattr(recipe, "name", None) or "",
+                    total_time_seconds=getattr(recipe, "total_time", None),
+                )
+                for recipe in getattr(chapter, "recipes", []) or []
+                if isinstance(getattr(recipe, "id", None), str) and recipe.id
+            ],
+        )
+        for chapter in getattr(collection, "chapters", []) or []
+    ]
+    return CollectionDetails(
+        id=collection.id,
+        name=collection.name,
+        description=getattr(collection, "description", None),
+        chapter_count=len(chapters),
+        recipe_count=sum(len(chapter.recipes) for chapter in chapters),
+        managed=managed,
+        chapters=chapters,
     )
 
 
