@@ -384,7 +384,7 @@ async def test_collection_methods(patched_session: tuple[CookidoughSession, Any]
     fake.add_custom_collection = AsyncMock(return_value=_make_collection())
     fake.remove_custom_collection = AsyncMock(return_value=None)
     fake.add_recipes_to_custom_collection = AsyncMock(return_value=_make_collection())
-    fake.remove_recipe_from_custom_collection = AsyncMock(return_value=None)
+    fake.remove_recipe_from_custom_collection = AsyncMock(return_value=_make_collection())
 
     managed = await session.list_managed_collections()
     assert managed.items[0].id == "c"
@@ -402,7 +402,62 @@ async def test_collection_methods(patched_session: tuple[CookidoughSession, Any]
     assert (await session.create_custom_collection("name")).id == "c"
     await session.delete_custom_collection("c")
     assert (await session.add_recipes_to_custom_collection("c", ["r1"])).id == "c"
-    await session.remove_recipe_from_custom_collection("c", "r1")
+    assert (await session.remove_recipe_from_custom_collection("c", "r1")).id == "c"
+
+
+def _collection_with(*recipe_ids: str) -> Any:
+    return _NS(
+        id="c",
+        name="N",
+        description=None,
+        chapters=[_NS(name="", recipes=[_NS(id=rid) for rid in recipe_ids])],
+    )
+
+
+async def test_remove_recipe_from_custom_collection_returns_updated_collection(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.remove_recipe_from_custom_collection = AsyncMock(return_value=_collection_with("r2"))
+    updated = await session.remove_recipe_from_custom_collection("c", "r1")
+    assert (updated.id, updated.recipe_count) == ("c", 1)
+
+
+async def test_remove_recipe_still_listed_raises(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.remove_recipe_from_custom_collection = AsyncMock(return_value=_collection_with("r1"))
+    with pytest.raises(UpstreamApiError, match="still in collection"):
+        await session.remove_recipe_from_custom_collection("c", "r1")
+
+
+@pytest.mark.parametrize(
+    ("collection_id", "match"),
+    [("c", "Recipe 'r1' is not in collection 'c'"), ("gone", "not one of your custom")],
+)
+async def test_remove_recipe_failure_explains_missing_membership(
+    patched_session: tuple[CookidoughSession, Any], collection_id: str, match: str
+) -> None:
+    session, fake = patched_session
+    fake.remove_recipe_from_custom_collection = AsyncMock(
+        side_effect=CookidooRequestException("400")
+    )
+    _mock_collections(fake, managed=[], custom=[_collection_with("r2")])
+    with pytest.raises(NotFoundError, match=match):
+        await session.remove_recipe_from_custom_collection(collection_id, "r1")
+
+
+async def test_remove_recipe_failure_on_a_member_stays_upstream_error(
+    patched_session: tuple[CookidoughSession, Any],
+) -> None:
+    session, fake = patched_session
+    fake.remove_recipe_from_custom_collection = AsyncMock(
+        side_effect=CookidooRequestException("500")
+    )
+    _mock_collections(fake, managed=[], custom=[_collection_with("r1")])
+    with pytest.raises(UpstreamApiError):
+        await session.remove_recipe_from_custom_collection("c", "r1")
 
 
 async def test_shopping_list_methods(

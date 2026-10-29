@@ -64,9 +64,13 @@ def register(mcp: MCPServer) -> None:
     @mcp.tool()
     async def remove_recipe_from_custom_collection(
         ctx: ToolContext, collection_id: str, recipe_id: str
-    ) -> str:
-        """Remove a single recipe from a custom collection."""
-        await get_context(ctx).session.remove_recipe_from_custom_collection(
+    ) -> CollectionSummary:
+        """Remove a single recipe from a custom collection.
+
+        Returns the updated collection once the platform no longer lists the
+        recipe in it. Fails with a not-found error if the recipe was not in
+        the collection, or the collection does not exist.
+        """
+        return await get_context(ctx).session.remove_recipe_from_custom_collection(
             collection_id, recipe_id
         )
-        return f"Removed recipe {recipe_id} from collection {collection_id}."

@@ -335,7 +335,7 @@ credentials are never sent there.
 | `create_custom_collection`             | Create a new empty custom collection                                                                 |
 | `delete_custom_collection`             | Delete a custom collection (recipes are kept)                                                        |
 | `add_recipes_to_custom_collection`     | Add one or more recipes to a custom collection                                                       |
-| `remove_recipe_from_custom_collection` | Remove a single recipe from a custom collection                                                      |
+| `remove_recipe_from_custom_collection` | Remove a single recipe from a custom collection; returns the updated collection                      |
 
 ### Shopping list
 

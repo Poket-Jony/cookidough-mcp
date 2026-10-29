@@ -86,6 +86,15 @@ async def test_list_managed_collections(registered_mcp: MCPServer, fake_mcp_cont
     assert page.total_pages == 1
 
 
+async def test_remove_recipe_from_custom_collection_returns_collection(
+    registered_mcp: MCPServer, fake_mcp_context: Any
+) -> None:
+    updated = await _tool_fn(registered_mcp, "remove_recipe_from_custom_collection")(
+        fake_mcp_context, collection_id="cc1", recipe_id="r1"
+    )
+    assert (updated.id, updated.recipe_count) == ("cc1", 1)
+
+
 async def test_add_recipes_to_shopping_list_returns_message(
     registered_mcp: MCPServer, fake_mcp_context: Any, fake_session: Any
 ) -> None:

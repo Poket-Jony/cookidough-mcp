@@ -165,8 +165,8 @@ class FakeSession:
 
     async def remove_recipe_from_custom_collection(
         self, collection_id: str, recipe_id: str
-    ) -> None:
-        return None
+    ) -> CollectionSummary:
+        return CollectionSummary(id=collection_id, name="Updated", recipe_count=1)
 
     async def get_shopping_list(self) -> ShoppingList:
         return ShoppingList(

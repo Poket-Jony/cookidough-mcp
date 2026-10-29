@@ -911,13 +911,16 @@ async def main() -> int:
                                 max_results=3,
                             )
                             ok(f"collection-scoped suggester returned {len(scoped)} suggestion(s)")
-                            msg = await _call(
+                            after = await _call(
                                 mcp,
                                 "remove_recipe_from_custom_collection",
                                 collection_id=created_collection_id,
                                 recipe_id=recipe_id_for_lookup,
                             )
-                            ok(f"removed {recipe_id_for_lookup!r} from collection ({msg})")
+                            ok(
+                                f"removed {recipe_id_for_lookup!r} from collection; "
+                                f"now has {after['recipe_count']} recipe(s)"
+                            )
                         except Exception as e:
                             failures += 1
                             fail(f"collection membership cycle raised: {e!r}")

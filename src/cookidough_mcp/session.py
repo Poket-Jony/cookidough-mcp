@@ -149,7 +149,7 @@ class CookidoughSessionProtocol(Protocol):
     ) -> CollectionSummary: ...
     async def remove_recipe_from_custom_collection(
         self, collection_id: str, recipe_id: str
-    ) -> None: ...
+    ) -> CollectionSummary: ...
     async def get_shopping_list(self) -> ShoppingList: ...
     async def add_recipes_to_shopping_list(self, recipe_ids: list[str]) -> int: ...
     async def remove_recipes_from_shopping_list(self, recipe_ids: list[str]) -> None: ...
@@ -650,8 +650,37 @@ class CookidoughSession:
 
     async def remove_recipe_from_custom_collection(
         self, collection_id: str, recipe_id: str
+    ) -> CollectionSummary:
+        try:
+            collection = await self._run(
+                lambda c: c.remove_recipe_from_custom_collection(collection_id, recipe_id)
+            )
+        except SessionClosedError:
+            raise
+        except UpstreamApiError as e:
+            await self._raise_if_not_a_member(collection_id, recipe_id, e)
+            raise
+        if recipe_id in _collection_recipe_ids(collection):
+            raise UpstreamApiError(
+                f"Recipe {recipe_id!r} is still in collection {collection_id!r} after removal"
+            )
+        return _collection_to_dto(collection)
+
+    async def _raise_if_not_a_member(
+        self, collection_id: str, recipe_id: str, cause: UpstreamApiError
     ) -> None:
-        await self._run(lambda c: c.remove_recipe_from_custom_collection(collection_id, recipe_id))
+        # The platform answers 400 E006 for a recipe that is not in the list,
+        # and cookidoo-api hides the status behind a generic request error.
+        collections = await self._drain_custom_collections()
+        collection = next((c for c in collections if getattr(c, "id", None) == collection_id), None)
+        if collection is None:
+            raise NotFoundError(
+                f"Collection {collection_id!r} is not one of your custom collections"
+            ) from cause
+        if recipe_id not in _collection_recipe_ids(collection):
+            raise NotFoundError(
+                f"Recipe {recipe_id!r} is not in collection {collection_id!r}"
+            ) from cause
 
     async def get_shopping_list(self) -> ShoppingList:
         ingredients, additional, recipes = await asyncio.gather(
@@ -1707,6 +1736,15 @@ def _collection_to_dto(collection: Any) -> CollectionSummary:
         chapter_count=len(chapters),
         recipe_count=recipe_count,
     )
+
+
+def _collection_recipe_ids(collection: Any) -> set[str]:
+    return {
+        recipe.id
+        for chapter in getattr(collection, "chapters", []) or []
+        for recipe in getattr(chapter, "recipes", []) or []
+        if isinstance(getattr(recipe, "id", None), str)
+    }
 
 
 def _calendar_to_dto(day: Any) -> CalendarDay:
